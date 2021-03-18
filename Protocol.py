@@ -9,4 +9,7 @@ class Protocol():
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         return sock
 
-Protocol()
+    def sendDataPacket(self, msg):
+        msg = msg.encode()
+
+# Protocol()
