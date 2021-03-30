@@ -1,15 +1,19 @@
 import socket
 import hashlib
 from threading import Thread
+import time
 
 class Protocol():
     delim = "<!>"
     msg_size = 200
-    window_size=5
+    window_size = 5
+    timeout_time = 1
     def __init__(self):
         print("Reliable UDP Protocol Initiated")
         self.lockServer = threading.Lock()
         self.LockClient = threading.Lock()
+        self.Acklock = threading.Lock()
+        self.TriDuplock = threading.Lock()
 
     def create_socket(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -38,8 +42,30 @@ class Protocol():
         '''
         return
 
-    def ThreadSend(self):
-        return
+    def Timeout(self):
+        time.sleep(timeout_time)
+        return None
+
+    def ThreadSend(self, AckArray, TripleDUP, message, sock, address, count , name):
+        count[0]+=1
+        sock.sendto(message, address)
+        timer = Thread(target=self.Timeout)
+        while True :
+            if(timer.is_alive()):
+                while self.Acklock.locked():
+                    a=1
+                status = AckArray[name]
+                if(status==1) :
+                    count[0]-=1
+                    return None
+                else if (status == 2) : #triple dup retransmission
+                    #check do I need to kill prev thread
+                    sock.sendto(message, address)
+                    timer = Thread(target=self.Timeout)
+            else:
+                sock.sendto(message, address)
+                timer = Thread(target=self.Timeout)
+    
 
     def sendDataPackets(self, msg):
         ''' 
