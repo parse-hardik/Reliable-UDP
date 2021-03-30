@@ -2,6 +2,7 @@ import socket
 import hashlib
 from threading import Thread
 import time
+import threading
 
 class Protocol():
     delim = "<!>"
@@ -35,11 +36,15 @@ class Protocol():
         data+=str(seq)
         return data
 
-    def recvACK(self, ACK, TripleDUP):
+    def recvACK(self, AckArray, TripleDUP, sock):
         ''' 
         If lock on both: As we receive ack, put it in the ACK list, and increment corresponding next expected seq number in
         TripleDUP list 
         '''
+        data, address = sock.recvfrom(65555)
+        line = data.split('<!>')
+        AckArray[line[0]]=1
+        TripleDUP[line[0]]+=1
         return
 
     def Timeout(self):
@@ -67,7 +72,7 @@ class Protocol():
                 timer = Thread(target=self.Timeout)
     
 
-    def sendDataPackets(self, msg):
+    def sendDataPackets(self, msg, sock, address):
         ''' 
         Array initalize for maintaing thread-packet mapping, size is  twice wndow_size
         ACK array-same size 0-not received, 1- received, 2 - retrans
@@ -75,13 +80,24 @@ class Protocol():
         '''
         window_start = 0
         window_end = self.window_size-1
-        arrThread = []
-        AckArray = []
-        TripleDUP = []
-        for i in 2*window_size:
-            arrThread[i] = Thread(target=self.ThreadSend, args=(AckArray, TripleDUP), name=i)
-        msg = msg.encode()
-
+        AckArray = [0]*(2*self.window_size)
+        TripleDUP = [0]*(2*self.window_size)
+        data_sent = 0
+        length = len(msg)
+        seq=0
+        count=[0]
+        Thread(target=self.recvACK, args=(AckArray, TripleDUP, sock)).start()
+        while count[0] < self.window_size:
+            time=0
+            while(data_sent<length/self.msg_size and count[0]<self.window_size):
+                data = msg[data_sent*self.msg_size:(data_sent+1)*self.msg_size]
+                data = self.makeDataPacket(data, 0, 0, 0, seq)
+                Thread(target=self.ThreadSend, args=(AckArray, TripleDUP, data, sock, address, count), name=seq).start() 
+                seq = (seq+1)%2*self.window_size
+                # count[0]+=1
+            while count[0] == self.window_size:
+                time+=1
+            time=0
 proto = Protocol()
 data = proto.makeDataPacket("hello", 0, 0, 0, 6)
 ack = proto.makeACKPacket(6, 3)
