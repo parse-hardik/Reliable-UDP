@@ -107,9 +107,10 @@ class Protocol():
         Triple-DUP ack array, intialized to 0, increment 1 when a corresponding next expected seq number received
         '''
         window_start = 0
+        seq_window = 2*self.window_size
         window_end = self.window_size-1
-        AckArray = [0]*(2*self.window_size)
-        TripleDUP = [0]*(2*self.window_size)
+        AckArray = [0]*seq_window
+        TripleDUP = [0]*seq_window
         data_sent = 0
         length = len(msg)
         seq=0
@@ -122,7 +123,7 @@ class Protocol():
                 data = self.makeDataPacket(data, 0, 0, 0, seq)
                 Thread(target=self.ThreadSend, args=(AckArray, TripleDUP, data, sock, address, count, seq), name=seq).start() 
                 data_sent+=1
-                seq = (seq+1)%2*self.window_size
+                seq = (seq+1)%seq_window
                 # count[0]+=1
             while count[0] == self.window_size:
                 time+=1

@@ -33,10 +33,11 @@ def client(port):
 			text = text.split('<!>')
 			ack = int(text[3])
 			msg = str(ack) + '<!>' + str(ack+1)
+			text[4] = text[4][2:-1]
 			sock.sendto(msg.encode(), ('127.0.0.1', port))
-			print(text[4][-2])
-			f.write(text[4][2:-1])
-			if (text[4][-2]=='@'):
+			print('Seq #{} Message: {}'.format(int(text[3]), text[4]))
+			f.write(text[4])
+			if (text[4][-1]=='@'):
 				break
 	f.close()
 	print("done")
