@@ -26,14 +26,21 @@ def client(port):
 	data = text.encode('ascii')
 	sock.sendto(data, ('127.0.0.1', port))
 	print('The OS assigned me the address {}'.format(sock.getsockname()))
-	while True:
-		data, address = sock.recvfrom(MAX_BYTES)
-		text = data.decode('ascii')
-		text = text.split('<!>')
-		ack = int(text[3])
-		msg = str(ack) + '<!>' + str(ack+1)
-		sock.sendto(msg.encode(), ('127.0.0.1', port))
-		print('The server at {} replied {!r}'.format(address, text))
+	with  open("trial.txt",'w') as f :
+		while True:
+			data, address = sock.recvfrom(MAX_BYTES)
+			text = data.decode('ascii')
+			text = text.split('<!>')
+			ack = int(text[3])
+			msg = str(ack) + '<!>' + str(ack+1)
+			sock.sendto(msg.encode(), ('127.0.0.1', port))
+			print(text[4][-2])
+			f.write(text[4][2:-1])
+			if (text[4][-2]=='@'):
+				break
+	f.close()
+	print("done")
+	return None
 
 
 if __name__ == '__main__':
