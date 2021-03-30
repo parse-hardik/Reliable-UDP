@@ -17,7 +17,13 @@ class Protocol():
         data+=str(FIN) + self.delim
         data+=str(seq) + self.delim
         data+=str(info.encode('ascii')) + self.delim
-        data+=str(hashlib.sha1(info.encode()).hexdigest()) + self.delim
+        data+=str(hashlib.sha1(info.encode()).hexdigest())
+        return data
+
+    def makeACKPacket(self, ACK, seq):
+        data=""
+        data+=str(ACK) + self.delim
+        data+=str(seq)
         return data
 
     def sendDataPacket(self, msg):
@@ -25,4 +31,5 @@ class Protocol():
 
 proto = Protocol()
 data = proto.makeDataPacket("hello", 0, 0, 0, 6)
-print(data)
+ack = proto.makeACKPacket(6, 3)
+print(data +"\n" + ack)
