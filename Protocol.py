@@ -6,7 +6,7 @@ import threading
 
 class Protocol():
     delim = "<!>"
-    msg_size = 200
+    msg_size = 5
     window_size = 5
     timeout_time = 1
     def __init__(self):
@@ -41,20 +41,30 @@ class Protocol():
         If lock on both: As we receive ack, put it in the ACK list, and increment corresponding next expected seq number in
         TripleDUP list 
         '''
-        data, address = sock.recvfrom(65555)
-        line = data.split('<!>')
-        AckArray[line[0]]=1
-        TripleDUP[line[0]]+=1
+        while True:
+            data, address = sock.recvfrom(65555)
+            data = data.decode('ascii')
+            line = data.split('<!>')
+            self.Acklock.acquire()
+            AckArray[int(line[0])]=1
+            TripleDUP[int(line[1])]+=1
+            if TripleDUP[int(line[1])] >=3:
+                AckArray[int(line[1])]=2
+            self.Acklock.release()
+            if line[1][-1] =='.':
+                break
         return
 
     def Timeout(self):
-        time.sleep(timeout_time)
+        time.sleep(self.timeout_time)
         return None
 
     def ThreadSend(self, AckArray, TripleDUP, message, sock, address, count , name):
         count[0]+=1
+        message = message.encode()
         sock.sendto(message, address)
         timer = Thread(target=self.Timeout)
+        timer.start()
         while True :
             if(timer.is_alive()):
                 while self.Acklock.locked():
@@ -63,7 +73,7 @@ class Protocol():
                 if(status==1) :
                     count[0]-=1
                     return None
-                else if (status == 2) : #triple dup retransmission
+                elif (status == 2) : #triple dup retransmission
                     #check do I need to kill prev thread
                     sock.sendto(message, address)
                     timer = Thread(target=self.Timeout)
@@ -87,21 +97,36 @@ class Protocol():
         seq=0
         count=[0]
         Thread(target=self.recvACK, args=(AckArray, TripleDUP, sock)).start()
-        while count[0] < self.window_size:
+        print('data is, ' , msg)
+        while count[0] < self.window_size and data_sent < length/self.msg_size:
             time=0
-            while(data_sent<length/self.msg_size and count[0]<self.window_size):
+            print('hi1')
+            while(data_sent < length/self.msg_size and count[0]<self.window_size):
                 data = msg[data_sent*self.msg_size:(data_sent+1)*self.msg_size]
                 data = self.makeDataPacket(data, 0, 0, 0, seq)
-                Thread(target=self.ThreadSend, args=(AckArray, TripleDUP, data, sock, address, count), name=seq).start() 
+                Thread(target=self.ThreadSend, args=(AckArray, TripleDUP, data, sock, address, count, seq), name=seq).start() 
+                data_sent+=1
                 seq = (seq+1)%2*self.window_size
                 # count[0]+=1
             while count[0] == self.window_size:
                 time+=1
             time=0
+        print('hi2')
+        return None
+
+
+
 proto = Protocol()
-data = proto.makeDataPacket("hello", 0, 0, 0, 6)
-ack = proto.makeACKPacket(6, 3)
-print(data +"\n" + ack)
+sock = proto.create_socket()
+sock.bind(('127.0.0.1', 6000))
+data, address = sock.recvfrom(65555)
+text = data.decode('ascii')
+print('client at {} says {!r}'.format(address, text))
+info = "Hello there, I am hardik and I am very frustrated"
+proto.sendDataPackets(info, sock, address)
+# data = proto.makeDataPacket("hello", 0, 0, 0, 6)
+# ack = proto.makeACKPacket(6, 3)
+# print(data +"\n" + ack)
 
 # def func(var):
 #     var['four']=5
