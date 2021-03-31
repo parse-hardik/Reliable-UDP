@@ -130,6 +130,14 @@ class Protocol():
             time=0
         return None
 
+    def recvDataPackets(self):
+        ''' 
+        Initial seq num is 0
+        Recieve packets and put them in data array(list of strings- size same as seq numbers)
+        Check if the current packet is already 
+        '''
+        return None
+
 
 
 # proto = Protocol()
