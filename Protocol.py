@@ -203,6 +203,7 @@ class Protocol():
         Recieve packets and put them in data array(list of strings- size same as seq numbers)
         Check if the current packet is already 
         '''
+        # Hello, I am invisible!
         return None
 
 
