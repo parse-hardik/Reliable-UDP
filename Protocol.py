@@ -9,14 +9,14 @@ class Protocol():
     msg_size = 5
     window_size = 5
     timeout_time = 1
+    MAX_BYTES = 65555
     def __init__(self):
         print("Reliable UDP Protocol Initiated")
-        self.lockServer = threading.Lock()
-        self.LockClient = threading.Lock()
         self.Acklock = threading.Lock()
         self.Ackread = 0
         self.Ackreadlock = threading.Lock()
         self.TriDuplock = threading.Lock()
+        self.DataArraylock = threading.Lock()
 
     def create_socket(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -197,17 +197,80 @@ class Protocol():
             time=0
         return None
 
-    def recvDataPackets(self):
+    def writeData(self, name, curr_seq_write, DataArray):
+        while(curr_seq_write is not name):
+            pass
+
+        self.DataArraylock.acquire()
+        msg = DataArray[name]
+        self.DataArraylock.release()
+
+        output_file = open("output.txt",'a')
+        output_file.write(msg)
+        output_file.close()
+        curr_seq_write = (curr_seq_write+1)%2*self.window_size
+
+
+
+    def recvDataPackets(self, address):
         ''' 
         Initial seq num is 0
         Recieve packets and put them in data array(list of strings- size same as seq numbers)
         Check if the current packet is already 
         '''
+        seq_window = 2*self.window_size
+        DataArray = [""]*seq_window
+        next_expec = 0
+        window_end = self.window_size - 1
+        curr_seq_write = [0] #current seq that needs to be written
+        while True:
+            data, address = sock.recvfrom(MAX_BYTES)
+            text = data.decode('ascii')
+            text = text.split('<!>')
+            message_num = int(text[3])
+
+            #if message not in given window
+            if(not ((next_expec < window_end and message_num >= next_expec and message_num<=window_end) or (next_expec > window_end and (message_num >= next_expec or message_num<=window_end ))) :
+                continue
+            
+            original_message = text[4][2:-1]#check
+            hashed_message = text[5][2:-1]#check
+
+            #check if packet is corrupted or not
+            check_hash = str(hashlib.sha1(original_message.encode()).hexdigest())
+            if (check_hash is not hashed_message):
+                continue
+
+            #if not logic
+            self.DataArraylock.acquire()
+            DataArray[message_num] = original_message
+            self.DataArraylock.release()
+
+            while True:
+                self.DataArraylock.acquire()
+                next_string = DataArray[next_expec]
+                self.DataArraylock.release()
+
+                if(next_string==""):
+                    break
+                
+                Thread(target=self.writeData, args=(next_expec, curr_seq_write, DataArray)).start()
+                next_expec = (next_expec+1)%seq_window
+                window_end =  (window_end+1)%seq_window
+            
+            message = self.makeACKPacket(message_num,next_expec)
+            message = message.encode()
+            sock.sendto(message, address)
+
+            if(original_message[-1]=='@'):
+                break
+
         return None
 
 
 
-# proto = Protocol()
+proto = Protocol()
+proto.recvDataPackets()
 # sock = proto.create_socket()
 # sock.bind(('127.0.0.1', 6000))
 # data, address = sock.recvfrom(65555)
@@ -225,3 +288,4 @@ class Protocol():
 # var = {'four':4}
 # func(var)
 # print('The variable is ',var)
+
