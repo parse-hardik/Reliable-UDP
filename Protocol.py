@@ -108,6 +108,7 @@ class Protocol():
         If lock on both: As we receive ack, put it in the ACK list, and increment corresponding next expected seq number in
         TripleDUP list 
         '''
+        #check if within window
         while True:
             data, address = sock.recvfrom(65555)
             data = data.decode('ascii')
@@ -173,9 +174,9 @@ class Protocol():
         ACK array-same size 0-not received, 1- received, 2 - retrans
         Triple-DUP ack array, intialized to 0, increment 1 when a corresponding next expected seq number received
         '''
-        window_start = 0
+        self.sender_window_start = 0
         seq_window = 2*self.window_size
-        window_end = self.window_size-1
+        self.sender_window_end = self.window_size-1
         AckArray = [0]*seq_window
         TripleDUP = [0]*seq_window
         data_sent = 0
@@ -208,6 +209,11 @@ class Protocol():
         output_file = open("output.txt",'a')
         output_file.write(msg)
         output_file.close()
+
+        self.DataArraylock.acquire()
+        DataArray[name] = ""
+        self.DataArraylock.release()
+
         curr_seq_write = (curr_seq_write+1)%2*self.window_size
 
 
@@ -221,7 +227,7 @@ class Protocol():
         seq_window = 2*self.window_size
         DataArray = [""]*seq_window
         next_expec = 0
-        window_end = self.window_size - 1
+        self.recv_window_end = self.window_size - 1
         curr_seq_write = [0] #current seq that needs to be written
         while True:
             data, address = sock.recvfrom(MAX_BYTES)
