@@ -22,6 +22,71 @@ class Protocol():
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         return sock
 
+    def connect(self, sock, address, window, file_name_path):
+        self.window_size = window
+        syn = self.makeDataPacket("Hello", self.window_size, 0, 0, 0)
+        sock.sendto(syn.encode(), address)
+        timer = Thread(target=self.Timeout)
+        timer.start()
+        while True:
+            if not timer.is_alive():
+                sock.sendto(syn.encode(), address)
+                timer = Thread(target=self.Timeout)
+                timer.start()
+            else:
+                data, address = sock.recvfrom(4096)
+                data = data.decode('ascii')
+                data = data.split(self.delim)
+                if int(data[0])!=0 and int(data[1])!=0:
+                    break
+        
+        ack = self.makeDataPacket(file_name_path, 0, 1, 0, -1)
+        sock.sendto(ack.encode(), address)
+        timer = Thread(target=self.Timeout)
+        timer.start()
+        while True:
+            if not timer.is_alive():
+                sock.sendto(ack.encode(), address)
+                timer = Thread(target=self.Timeout)
+                timer.start()
+            else:
+                data, address = sock.recvfrom(4096)
+                data = data.decode('ascii')
+                data = data.split(self.delim)
+                if int(data[0])==-1 and int(data[1])==0:
+                    return 1
+        return -1
+
+    def listen(self, sock):
+        while True:
+            data, address = sock.recvfrom(4096)
+            data = data.decode('ascii')
+            data = data.split(self.delim)
+            if int(data[0])==0:
+                continue
+            self.window_size = int(data[0])
+            synack = self.makeDataPacket("", 1, 1, 0, -1)
+            sock.sendto(synack.encode(), address)
+            timer = Thread(target=self.Timeout)
+            timer.start()
+            flag=0
+            while True:
+                if not timer.is_alive():
+                    sock.sendto(synack.encode(), address)
+                    timer = Thread(target=self.Timeout)
+                    timer.start()
+                else:
+                    data, address = sock.recvfrom(4096)
+                    data = data.decode('ascii')
+                    if int(data[1])==1 and int(data[3])==-1:
+                        self.file_to_send = data[4].decode('ascii')
+                        flag=1
+                        break
+            if flag==1:
+                break
+        print('Received connection from {}'.format(address))
+        return None
+
     def makeDataPacket(self, info, SYN, ACK, FIN, seq):
         data=""
         data+=str(SYN) + self.delim
@@ -95,9 +160,11 @@ class Protocol():
                     #check do I need to kill prev thread
                     sock.sendto(message, address)
                     timer = Thread(target=self.Timeout)
+                    timer.start()
             else:
                 sock.sendto(message, address)
                 timer = Thread(target=self.Timeout)
+                timer.start()
     
 
     def sendDataPackets(self, msg, sock, address):

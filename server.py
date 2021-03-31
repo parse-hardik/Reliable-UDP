@@ -5,7 +5,7 @@ def server(address):
     proto = Protocol()
     sock = proto.create_socket()
     sock.bind(address)
-    sock.listen(64)
+    proto.listen(sock)
     return
 
 if __name__ == '__main__':
