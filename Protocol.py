@@ -265,6 +265,7 @@ class Protocol():
             if(original_message[-1]=='@'):
                 break
 
+        # Hello, I am invisible!
         return None
 
 
