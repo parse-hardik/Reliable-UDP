@@ -218,7 +218,7 @@ class Protocol():
 
 
 
-    def recvDataPackets(self, address):
+    def recvDataPackets(self, address, sock):
         ''' 
         Initial seq num is 0
         Recieve packets and put them in data array(list of strings- size same as seq numbers)
@@ -236,7 +236,7 @@ class Protocol():
             message_num = int(text[3])
 
             #if message not in given window
-            if(not ((next_expec < window_end and message_num >= next_expec and message_num<=window_end) or (next_expec > window_end and (message_num >= next_expec or message_num<=window_end ))) :
+            if(not ((next_expec < self.recv_window_end and message_num >= next_expec and message_num<=self.recv_window_end) or (next_expec > self.recv_window_end and (message_num >= next_expec or message_num<=self.recv_window_end )))):
                 continue
             
             original_message = text[4][2:-1]#check
