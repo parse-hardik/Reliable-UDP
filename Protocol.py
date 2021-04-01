@@ -85,14 +85,15 @@ class Protocol():
                 data = data.split(self.delim)
                 if int(data[1])==1 and int(data[3])==-1:
                     self.file_to_send = data[4][2:-1]
+                    check = str(hashlib.sha1(self.file_to_send.encode()).hexdigest())
+                    if check!=data[5]:
+                        break
                     flag=1
                     break
             if flag==1:
                 break
             
-        ack = self.makeACKPacket(-1, 0)
         sock.settimeout(None)
-        sock.sendto(ack.encode(), address)
         print('Received connection from {} and is requesting {}'.format(address, self.file_to_send))
         return self.file_to_send
 
@@ -175,7 +176,6 @@ class Protocol():
                 sock.sendto(message, address)
                 timer = Thread(target=self.Timeout)
                 timer.start()
-    
 
     def sendDataPackets(self, msg, sock, address):
         ''' 
@@ -237,9 +237,17 @@ class Protocol():
         DataArray = [""]*seq_window
         next_expec = 0
         self.recv_window_end = self.window_size - 1
+        info = False
         curr_seq_write = [0] #current seq that needs to be written
+        sock.settimeout(250)
         while True:
-            data, address = sock.recvfrom(MAX_BYTES)
+            try:
+                data, address = sock.recvfrom(MAX_BYTES)
+            except socket.timeout as e:
+                err = e.args[0]
+                if err == 'timed out':
+                    return info
+            info = True
             text = data.decode('ascii')
             text = text.split('<!>')
             message_num = int(text[3])
@@ -277,8 +285,8 @@ class Protocol():
             message = message.encode()
             sock.sendto(message, address)
 
-            if(original_message[-1]=='@'):
-                break
+            # if(original_message[-1]=='@'):
+            #     break
 
         # Hello, I am invisible!
         return None

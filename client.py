@@ -5,8 +5,10 @@ def client(address):
     proto = Protocol()
     sock = proto.create_socket()
     sock.bind(('localhost', 5000))
-    conn = proto.connect(sock, address, 5, "trial2.txt")
-    print(conn)
+    recv = False
+    while not recv:
+        proto.connect(sock, address, 5, "trial2.txt")
+        recv = proto.recvDataPackets(address, sock)
     return
 
 if __name__ == '__main__':
