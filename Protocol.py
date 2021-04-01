@@ -44,18 +44,6 @@ class Protocol():
         
         ack = self.makeDataPacket(file_name_path, 0, 1, 0, -1)
         sock.sendto(ack.encode(), address)
-        # while True:
-        #     try:
-        #         data, address = sock.recvfrom(4096)
-        #     except socket.timeout as e:
-        #         err = e.args[0]
-        #         if err == 'timed out':
-        #             sock.sendto(ack.encode(), address)
-        #             continue
-        #     data = data.decode('ascii')
-        #     data = data.split(self.delim)
-        #     if int(data[0])==-1 and int(data[1])==0:#Ack to be received is (-1,0)
-        #         break
         sock.settimeout(None)
         print("Three way handshake successfull")
         return 1
@@ -97,6 +85,31 @@ class Protocol():
         print('Received connection from {} and is requesting {}'.format(address, self.file_to_send))
         return self.file_to_send, address
 
+    def close(self, sock, address):
+        print("Socket closing initiated")
+        fin = self.makeDataPacket("Close", 0, 0, 1, 0)
+        sock.sendto(fin.encode(), address)
+        sock.settimeout(self.timeout_time)
+        while True:
+            try:
+                data, address = sock.recvfrom(4096)
+            except socket.timeout as e:
+                err = e.args[0]
+                if err == 'timed out':
+                    sock.sendto(fin.encode(), address)
+                    continue
+            data = data.decode('ascii')
+            data = data.split(self.delim)
+            if int(data[2])!=0 and int(data[1])!=0:
+                break
+        
+        
+        ack = self.makeDataPacket("Closing", 0, 1, 0, -1)
+        sock.sendto(ack.encode(), address)
+        sock.settimeout(None)
+        print("Socket closing successfull")
+        return 1
+
     def makeDataPacket(self, info, SYN, ACK, FIN, seq):
         data=""
         data+=str(SYN) + self.delim
@@ -133,8 +146,11 @@ class Protocol():
                 self.Acklock.acquire()
                 AckArray[int(line[1])]=2
                 self.Acklock.release()
-            if line[1][-1] =='.':
-                break
+            # if line[1][-1] =='.':
+            #     break
+            '''
+            To implement end of recieving ACKs and stop the server using break
+            '''
         return
 
     def Timeout(self):
@@ -196,17 +212,14 @@ class Protocol():
         count=[0]
         Thread(target=self.recvACK, args=(AckArray, TripleDUP, sock)).start()
         while count[0] < self.window_size and data_sent < length/self.msg_size:
-            time=0
             while(data_sent < length/self.msg_size and count[0]<self.window_size):
                 data = msg[data_sent*self.msg_size:(data_sent+1)*self.msg_size]
                 data = self.makeDataPacket(data, 0, 0, 0, seq)
                 Thread(target=self.ThreadSend, args=(AckArray, TripleDUP, data, sock, address, count, seq), name=seq).start() 
                 data_sent+=1
                 seq = (seq+1)%seq_window
-                # count[0]+=1
             while count[0] == self.window_size:
-                time+=1
-            time=0
+                pass
         return None
 
     def writeData(self, name, curr_seq_write, DataArray):
@@ -254,17 +267,14 @@ class Protocol():
             info = True
             text = data.decode('ascii')
             text = text.split('<!>')
-            print(text)
             message_num = int(text[3])
 
             #if message not in given window
             if(not ((next_expec < self.recv_window_end and message_num >= next_expec and message_num<=self.recv_window_end) or (next_expec > self.recv_window_end and (message_num >= next_expec or message_num<=self.recv_window_end )))):
                 continue
             
-
-            # print(text[4],text[5])
-            original_message = text[4][2:-1]#check
-            hashed_message = text[5]#check
+            original_message = text[4][2:-1]
+            hashed_message = text[5]
 
             #check if packet is corrupted or not
             check_hash = str(hashlib.sha1(original_message.encode()).hexdigest())
@@ -294,32 +304,4 @@ class Protocol():
             message = self.makeACKPacket(message_num,next_expec)
             message = message.encode()
             sock.sendto(message, address)
-
-            # if(original_message[-1]=='@'):
-            #     break
-
-        # Hello, I am invisible!
         return None
-
-
-
-# proto = Protocol()
-# proto.recvDataPackets()
-# sock = proto.create_socket()
-# sock.bind(('127.0.0.1', 6000))
-# data, address = sock.recvfrom(65555)
-# text = data.decode('ascii')
-# print('client at {} says {!r}'.format(address, text))
-# info = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed quis fringilla leo. Morbi ultricies lorem at leo elementum, quis volutpat nulla pellentesque. Fusce vel turpis ac turpis finibus dapibus vitae vel enim. Vivamus eleifend ac risus sit amet gravida. Sed tempus at odio quis commodo. Praesent imperdiet ligula non sem egestas ultrices. Vestibulum posuere leo eget tristique ullamcorper. Nulla non tortor consectetur, viverra lorem sed, lobortis nisl.Nullam in pretium nisi. Morbi pulvinar quis mauris porta interdum. Vivamus eu magna id leo mollis luctus. Aliquam egestas nec lorem vel efficitur. Sed et quam eu erat fringilla consectetur et id tortor. Ut placerat lorem et finibus pellentesque. Vestibulum a fermentum libero, quis ornare ligula. Suspendisse tempus nec arcu vel eleifend. Vestibulum viverra mi eros, eget lacinia risus elementum nec. Maecenas sed suscipit velit. Integer id justo fermentum orci imperdiet lobortis. Quisque vitae velit ut ligula aliquam commodo. Ut viverra maximus vulputate. Praesent volutpat dolor ligula, commodo tincidunt eros vehicula et.Nulla auctor non lacus eget rutrum. Ut id nibh elit. Mauris sed quam nisi. Duis in vestibulum dui. Ut vitae tincidunt enim, blandit gravida dolor. Praesent rhoncus, nisl ut rhoncus tempor, sapien est feugiat eros, non dapibus purus felis in mauris. Curabitur tempus mauris quis leo vestibulum, vel iaculis diam facilisis. Aliquam mattis odio ac dolor venenatis vulputate. Aenean ac eros sollicitudin, mattis nunc at, gravida urna. Donec consequat turpis quis tristique finibus. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia curae; Morbi sit amet ultricies orci. Aenean non posuere orci. Pellentesque nec nulla nec nunc congue consequat. Curabitur aliquam ipsum nec neque commodo, ut bibendum nunc ullamcorper.Vestibulum luctus, dui ac condimentum faucibus, nibh felis volutpat ante, vitae tincidunt lorem enim at sem. Maecenas egestas ac magna ut auctor. Duis nec pulvinar justo, vel laoreet dui. Nulla facilisi. Ut porta ipsum at magna faucibus, vitae congue ante laoreet. Praesent pellentesque efficitur sem sed volutpat. Suspendisse metus elit, dictum id mi vel, ultricies bibendum urna. Nam pulvinar dictum nunc sed sagittis. Vestibulum at molestie sapien. Morbi eros libero, consequat vel felis sed, convallis venenatis lectus. Mauris purus velit, sagittis a mi eget, lacinia euismod lectus. Phasellus molestie eleifend arcu, ut convallis ex ultrices id. Integer ultricies tempor arcu ac vulputate.Curabitur elit dui, cursus eget odio ac, rhoncus hendrerit nunc. Integer tortor nulla, tempus ac mi vitae, malesuada pulvinar sem. Fusce sit amet tincidunt arcu, nec fringilla nisi. Phasellus ut erat eu nulla vulputate aliquet sed at eros. Vestibulum ut pulvinar leo, in lobortis est. Curabitur convallis vel nunc vel ornare. Aliquam non lacinia tellus. Praesent nec risus euismod erat vehicula sagittis. Aenean sed massa varius, lobortis arcu in, commodo augue.@"
-# proto.sendDataPackets(info, sock, address)
-# data = proto.makeDataPacket("hello", 0, 0, 0, 6)
-# ack = proto.makeACKPacket(6, 3)
-# print(data +"\n" + ack)
-
-# def func(var):
-#     var['four']=5
-
-# var = {'four':4}
-# func(var)
-# print('The variable is ',var)
-
