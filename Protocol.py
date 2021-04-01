@@ -44,18 +44,18 @@ class Protocol():
         
         ack = self.makeDataPacket(file_name_path, 0, 1, 0, -1)
         sock.sendto(ack.encode(), address)
-        while True:
-            try:
-                data, address = sock.recvfrom(4096)
-            except socket.timeout as e:
-                err = e.args[0]
-                if err == 'timed out':
-                    sock.sendto(ack.encode(), address)
-                    continue
-            data = data.decode('ascii')
-            data = data.split(self.delim)
-            if int(data[0])==-1 and int(data[1])==0:#Ack to be received is (-1,0)
-                break
+        # while True:
+        #     try:
+        #         data, address = sock.recvfrom(4096)
+        #     except socket.timeout as e:
+        #         err = e.args[0]
+        #         if err == 'timed out':
+        #             sock.sendto(ack.encode(), address)
+        #             continue
+        #     data = data.decode('ascii')
+        #     data = data.split(self.delim)
+        #     if int(data[0])==-1 and int(data[1])==0:#Ack to be received is (-1,0)
+        #         break
         sock.settimeout(None)
         print("Three way handshake successfull")
         return 1
@@ -95,7 +95,7 @@ class Protocol():
             
         sock.settimeout(None)
         print('Received connection from {} and is requesting {}'.format(address, self.file_to_send))
-        return self.file_to_send
+        return self.file_to_send, address
 
     def makeDataPacket(self, info, SYN, ACK, FIN, seq):
         data=""
@@ -123,8 +123,10 @@ class Protocol():
             data, address = sock.recvfrom(65555)
             data = data.decode('ascii')
             line = data.split('<!>')
+            print(line)
             self.Acklock.acquire()
             AckArray[int(line[0])]=1
+            print(AckArray)
             self.Acklock.release()
             TripleDUP[int(line[1])]+=1
             if TripleDUP[int(line[1])] >=3:
@@ -208,7 +210,7 @@ class Protocol():
         return None
 
     def writeData(self, name, curr_seq_write, DataArray):
-        while(curr_seq_write is not name):
+        while(curr_seq_write[0] != name):
             pass
 
         self.DataArraylock.acquire()
@@ -223,8 +225,10 @@ class Protocol():
         DataArray[name] = ""
         self.DataArraylock.release()
 
-        curr_seq_write = (curr_seq_write+1)%2*self.window_size
+        seq_window = 2*self.window_size
+        curr_seq_write[0] = (curr_seq_write[0]+1)%(seq_window)
 
+        return None
 
 
     def recvDataPackets(self, address, sock):
@@ -239,10 +243,10 @@ class Protocol():
         self.recv_window_end = self.window_size - 1
         info = False
         curr_seq_write = [0] #current seq that needs to be written
-        sock.settimeout(250)
+        sock.settimeout(2)
         while True:
             try:
-                data, address = sock.recvfrom(MAX_BYTES)
+                data, address = sock.recvfrom(4096)
             except socket.timeout as e:
                 err = e.args[0]
                 if err == 'timed out':
@@ -250,22 +254,28 @@ class Protocol():
             info = True
             text = data.decode('ascii')
             text = text.split('<!>')
+            print(text)
             message_num = int(text[3])
 
             #if message not in given window
             if(not ((next_expec < self.recv_window_end and message_num >= next_expec and message_num<=self.recv_window_end) or (next_expec > self.recv_window_end and (message_num >= next_expec or message_num<=self.recv_window_end )))):
                 continue
             
+
+            # print(text[4],text[5])
             original_message = text[4][2:-1]#check
-            hashed_message = text[5][2:-1]#check
+            hashed_message = text[5]#check
 
             #check if packet is corrupted or not
             check_hash = str(hashlib.sha1(original_message.encode()).hexdigest())
-            if (check_hash is not hashed_message):
+
+            if (check_hash != hashed_message):
                 continue
 
             #if not logic
             self.DataArraylock.acquire()
+            if(DataArray[message_num] !=""):
+                continue
             DataArray[message_num] = original_message
             self.DataArraylock.release()
 
@@ -279,7 +289,7 @@ class Protocol():
                 
                 Thread(target=self.writeData, args=(next_expec, curr_seq_write, DataArray)).start()
                 next_expec = (next_expec+1)%seq_window
-                window_end =  (window_end+1)%seq_window
+                self.recv_window_end =  (self.recv_window_end+1)%seq_window
             
             message = self.makeACKPacket(message_num,next_expec)
             message = message.encode()
