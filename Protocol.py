@@ -24,40 +24,44 @@ class Protocol():
 
     def connect(self, sock, address, window, file_name_path):
         self.window_size = window
+        print("Three way handshake initiated")
         syn = self.makeDataPacket("Hello", self.window_size, 0, 0, 0)
         sock.sendto(syn.encode(), address)
-        timer = Thread(target=self.Timeout)
-        timer.start()
+        sock.settimeout(self.timeout_time)
         while True:
-            if not timer.is_alive():
-                sock.sendto(syn.encode(), address)
-                timer = Thread(target=self.Timeout)
-                timer.start()
-            else:
+            try:
                 data, address = sock.recvfrom(4096)
-                data = data.decode('ascii')
-                data = data.split(self.delim)
-                if int(data[0])!=0 and int(data[1])!=0:
-                    break
+            except socket.timeout as e:
+                err = e.args[0]
+                if err == 'timed out':
+                    sock.sendto(syn.encode(), address)
+                    continue
+            data = data.decode('ascii')
+            data = data.split(self.delim)
+            if int(data[0])!=0 and int(data[1])!=0:
+                break
+        
         
         ack = self.makeDataPacket(file_name_path, 0, 1, 0, -1)
         sock.sendto(ack.encode(), address)
-        timer = Thread(target=self.Timeout)
-        timer.start()
         while True:
-            if not timer.is_alive():
-                sock.sendto(ack.encode(), address)
-                timer = Thread(target=self.Timeout)
-                timer.start()
-            else:
+            try:
                 data, address = sock.recvfrom(4096)
-                data = data.decode('ascii')
-                data = data.split(self.delim)
-                if int(data[0])==-1 and int(data[1])==0:
-                    return 1
-        return -1
+            except socket.timeout as e:
+                err = e.args[0]
+                if err == 'timed out':
+                    sock.sendto(ack.encode(), address)
+                    continue
+            data = data.decode('ascii')
+            data = data.split(self.delim)
+            if int(data[0])==-1 and int(data[1])==0:#Ack to be received is (-1,0)
+                break
+        sock.settimeout(None)
+        print("Three way handshake successfull")
+        return 1
 
     def listen(self, sock):
+        flag=0
         while True:
             data, address = sock.recvfrom(4096)
             data = data.decode('ascii')
@@ -67,25 +71,30 @@ class Protocol():
             self.window_size = int(data[0])
             synack = self.makeDataPacket("", 1, 1, 0, -1)
             sock.sendto(synack.encode(), address)
-            timer = Thread(target=self.Timeout)
-            timer.start()
-            flag=0
+            sock.settimeout(self.timeout_time)
             while True:
-                if not timer.is_alive():
-                    sock.sendto(synack.encode(), address)
-                    timer = Thread(target=self.Timeout)
-                    timer.start()
-                else:
+                try:
                     data, address = sock.recvfrom(4096)
-                    data = data.decode('ascii')
-                    if int(data[1])==1 and int(data[3])==-1:
-                        self.file_to_send = data[4].decode('ascii')
-                        flag=1
-                        break
+                    
+                except socket.timeout as e:
+                    err = e.args[0]
+                    if err == 'timed out':
+                        sock.sendto(synack.encode(), address)
+                        continue
+                data = data.decode('ascii')
+                data = data.split(self.delim)
+                if int(data[1])==1 and int(data[3])==-1:
+                    self.file_to_send = data[4][2:-1]
+                    flag=1
+                    break
             if flag==1:
                 break
-        print('Received connection from {}'.format(address))
-        return None
+            
+        ack = self.makeACKPacket(-1, 0)
+        sock.settimeout(None)
+        sock.sendto(ack.encode(), address)
+        print('Received connection from {} and is requesting {}'.format(address, self.file_to_send))
+        return self.file_to_send
 
     def makeDataPacket(self, info, SYN, ACK, FIN, seq):
         data=""
@@ -276,8 +285,8 @@ class Protocol():
 
 
 
-proto = Protocol()
-proto.recvDataPackets()
+# proto = Protocol()
+# proto.recvDataPackets()
 # sock = proto.create_socket()
 # sock.bind(('127.0.0.1', 6000))
 # data, address = sock.recvfrom(65555)
