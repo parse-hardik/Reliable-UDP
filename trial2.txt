@@ -1,5 +1,5 @@
 On the other hand, this book does not start by assuming you know any networking! As long as you have ever used
 a web browser or sent an e-mail, you should know enough to start reading this book at the beginning and learn about
 computer networking along the way. I will approach networking from the point of view of an application programmer
-who is either implementing a network-connected service—such as a web site, an e-mail server, or a networked
-computer game—or writing a client program that is designed to use such a service.
+who is either implementing a network-connected service such as a web site, an e-mail server, or a networked
+computer game or writing a client program that is designed to use such a service.

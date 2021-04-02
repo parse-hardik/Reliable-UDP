@@ -102,7 +102,9 @@ class Protocol():
                     sock.sendto(fin.encode(), address)
                     continue
             data = data.decode('ascii')
-            data = data.split(self.delim)
+            
+            data = data.split('<!>')
+            print(data)
             if int(data[2])!=0 and int(data[1])!=0:
                 break
         
@@ -162,28 +164,31 @@ class Protocol():
             data, address = sock.recvfrom(65555)
             data = data.decode('ascii')
             line = data.split('<!>')
-            # print(line)
+            print(line)
 
             packet_num = int(line[0])
 
             #check if within the window
-            if(not (self.sender_window_start < self.sender_window_end and packet_num >= self.sender_window_start and packet_num <= self.sender_window_end)):
+            if(not ((self.sender_window_start < self.sender_window_end and packet_num >= self.sender_window_start and packet_num <= self.sender_window_end) or (self.sender_window_start > self.sender_window_end and (packet_num >= self.sender_window_start or packet_num <= self.sender_window_end)) )):
+                print("first if")
                 continue
 
-            if(not (self.sender_window_start > self.sender_window_end and (packet_num >= self.sender_window_start or packet_num <= self.sender_window_end))):
-                continue
-
-            if(AckArray[packet_num]==0):
+            if(AckArray[packet_num]!=1):
                 self.Acklock.acquire()
                 AckArray[packet_num]=1
-                num_packets-=1
                 self.Acklock.release()
+                
+                num_packets-=1
+                print(packet_num, num_packets)
 
                 #increase window or not
-                if(packet_num == self.sender_window_start):
-                    while(AckArray[self.sender_window_start]==1):
-                        self.sender_window_start = (self.sender_window_start+1)%seq_window
-                        self.sender_window_end = (self.sender_window_end+1)%seq_window
+                # if(packet_num == self.sender_window_start):
+                while(AckArray[self.sender_window_start]==4):
+                    self.Acklock.acquire()
+                    AckArray[self.sender_window_start]=0
+                    self.Acklock.release()
+                    self.sender_window_start = (self.sender_window_start+1)%seq_window
+                    self.sender_window_end = (self.sender_window_end+1)%seq_window
 
             TripleDUP[packet_num]+=1
             if TripleDUP[packet_num] >=3:
@@ -192,11 +197,12 @@ class Protocol():
                 self.Acklock.release()
             
             if (num_packets == 0) :
+                print(packet_num, num_packets)
                 break
             '''
             To implement end of recieving ACKs and stop the server using break
             '''
-        close(sock, address)
+        self.close(sock, address)
         return
 
     def Timeout(self):
@@ -213,24 +219,27 @@ class Protocol():
         timer.start()
         while True :
             if(timer.is_alive()):
-
-                self.Ackreadlock.acquire()
-                if(not self.Ackread):
-                    self.Acklock.acquire()
-                self.Ackread+=1
-                self.Ackreadlock.release()
+                
+                # self.Ackreadlock.acquire()
+                # if(not self.Ackread):
+                #     self.Acklock.acquire()
+                # self.Ackread+=1
+                # self.Ackreadlock.release()
 
                 status = AckArray[name]
 
-                self.Ackreadlock.acquire()
-                self.Ackread-=1
+                # self.Ackreadlock.acquire()
+                # self.Ackread-=1
 
-                if(not self.Ackread):
-                    self.Acklock.release()
+                # if(not self.Ackread):
+                #     self.Acklock.release()
                 
-                self.Ackreadlock.release()
+                # self.Ackreadlock.release()
 
                 if(status==1) :
+                    self.Acklock.acquire()
+                    AckArray[name] = 4
+                    self.Acklock.release()
                     self.senderThreadCountLock.acquire()
                     count[0]-=1
                     self.senderThreadCountLock.release()
@@ -246,10 +255,10 @@ class Protocol():
                 timer.start()
 
     def sendFile(self, sock, address, file):
-        msg=""
         f = open(file, "r")
-        msg+=f.read()
+        msg=f.read()
         f.close()
+        print(msg)
         self.sendDataPackets(msg, sock, address)
         return None
 
@@ -347,6 +356,7 @@ class Protocol():
                 continue
 
             #if not logic
+            print(text)
             self.DataArraylock.acquire()
             if(DataArray[message_num] !=""):
                 continue
@@ -367,5 +377,6 @@ class Protocol():
             
             message = self.makeACKPacket(message_num,next_expec)
             message = message.encode()
+            print(message)
             sock.sendto(message, address)
         return None

@@ -8,7 +8,6 @@ def server(address):
     file_requested, add = proto.listen(sock)
     # info = "Enjoyed minutes related as at on on. Is fanny dried as often me. Goodness as reserved raptures to mistaken steepest oh screened he. Gravity he mr sixteen esteems. Mile home its new way with high told said."
     proto.sendFile(sock, add, file_requested)
-    proto.close(sock, add)
     return
 
 if __name__ == '__main__':
