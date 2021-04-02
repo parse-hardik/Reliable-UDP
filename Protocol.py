@@ -167,35 +167,42 @@ class Protocol():
             print(line)
 
             packet_num = int(line[0])
-
+            print(self.sender_window_start, self.sender_window_end)
+            print("ACK received ", packet_num)
+            print(AckArray)
             #check if within the window
             if(not ((self.sender_window_start < self.sender_window_end and packet_num >= self.sender_window_start and packet_num <= self.sender_window_end) or (self.sender_window_start > self.sender_window_end and (packet_num >= self.sender_window_start or packet_num <= self.sender_window_end)) )):
                 print("first if")
                 continue
 
-            if(AckArray[packet_num]!=1):
+            if(AckArray[packet_num]!=4):
                 self.Acklock.acquire()
                 AckArray[packet_num]=1
-                self.Acklock.release()
-                
+                print("ACK intermediate ", packet_num)
+                print(AckArray)
                 num_packets-=1
                 print(packet_num, num_packets)
 
                 #increase window or not
                 # if(packet_num == self.sender_window_start):
                 while(AckArray[self.sender_window_start]==4):
-                    self.Acklock.acquire()
                     AckArray[self.sender_window_start]=0
-                    self.Acklock.release()
+                    TripleDUP[self.sender_window_start]=0
                     self.sender_window_start = (self.sender_window_start+1)%seq_window
                     self.sender_window_end = (self.sender_window_end+1)%seq_window
-
+                self.Acklock.release()
+            print("ACK updated")
+            print(AckArray)
             TripleDUP[packet_num]+=1
+            print("Triple DUP")
+            print(TripleDUP)
             if TripleDUP[packet_num] >=3:
                 self.Acklock.acquire()
                 AckArray[packet_num]=2
+                TripleDUP[packet_num]=0
                 self.Acklock.release()
             
+            print("1")
             if (num_packets == 0) :
                 print(packet_num, num_packets)
                 break
@@ -215,27 +222,12 @@ class Protocol():
         self.senderThreadCountLock.release()
         message = message.encode()
         sock.sendto(message, address)
-        timer = Thread(target=self.Timeout)
-        timer.start()
-        while True :
-            if(timer.is_alive()):
-                
-                # self.Ackreadlock.acquire()
-                # if(not self.Ackread):
-                #     self.Acklock.acquire()
-                # self.Ackread+=1
-                # self.Ackreadlock.release()
-
+        # timer = Thread(target=self.Timeout)
+        # timer.start()
+        sock.settimeout(self.timeout_time)
+        while True:
+            try:
                 status = AckArray[name]
-
-                # self.Ackreadlock.acquire()
-                # self.Ackread-=1
-
-                # if(not self.Ackread):
-                #     self.Acklock.release()
-                
-                # self.Ackreadlock.release()
-
                 if(status==1) :
                     self.Acklock.acquire()
                     AckArray[name] = 4
@@ -247,16 +239,58 @@ class Protocol():
                 elif (status == 2) : #triple dup retransmission
                     #check do I need to kill prev thread
                     sock.sendto(message, address)
-                    timer = Thread(target=self.Timeout)
-                    timer.start()
-            else:
-                sock.sendto(message, address)
-                timer = Thread(target=self.Timeout)
-                timer.start()
+                    sock.settimeout(self.timeout_time)
+            except socket.timeout as e:
+                err = e.args[0]
+                if err == 'timed out':
+                    sock.sendto(message, address)
+                    continue
+        sock.settimeout(None)
+        # while True :
+        #     if(timer.is_alive()):
+                
+        #         # self.Ackreadlock.acquire()
+        #         # if(not self.Ackread):
+        #         #     self.Acklock.acquire()
+        #         # self.Ackread+=1
+        #         # self.Ackreadlock.release()
+
+        #         status = AckArray[name]
+
+        #         # self.Ackreadlock.acquire()
+        #         # self.Ackread-=1
+
+        #         # if(not self.Ackread):
+        #         #     self.Acklock.release()
+                
+        #         # self.Ackreadlock.release()
+
+        #         if(status==1) :
+        #             self.Acklock.acquire()
+        #             AckArray[name] = 4
+        #             self.Acklock.release()
+        #             self.senderThreadCountLock.acquire()
+        #             count[0]-=1
+        #             self.senderThreadCountLock.release()
+        #             return None
+        #         elif (status == 2) : #triple dup retransmission
+        #             #check do I need to kill prev thread
+        #             sock.sendto(message, address)
+        #             timer = Thread(target=self.Timeout)
+        #             timer.start()
+        #     else:
+        #         sock.sendto(message, address)
+        #         timer = Thread(target=self.Timeout)
+        #         timer.start()
 
     def sendFile(self, sock, address, file):
         f = open(file, "r")
-        msg=f.read()
+        msg=""
+        while True:
+            line=f.readline()
+            if not line:
+                break
+            msg+=line[0:-2] + " "
         f.close()
         print(msg)
         self.sendDataPackets(msg, sock, address)
@@ -296,15 +330,15 @@ class Protocol():
 
         self.DataArraylock.acquire()
         msg = DataArray[name]
+        DataArray[name] = ""
         self.DataArraylock.release()
 
         output_file = open("output.txt",'a')
         output_file.write(msg)
         output_file.close()
 
-        self.DataArraylock.acquire()
-        DataArray[name] = ""
-        self.DataArraylock.release()
+        # self.DataArraylock.acquire()
+        # self.DataArraylock.release()
 
         seq_window = 2*self.window_size
         curr_seq_write[0] = (curr_seq_write[0]+1)%(seq_window)
