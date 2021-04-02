@@ -3,6 +3,7 @@ import hashlib
 from threading import Thread
 import time
 import threading
+import math
 
 class Protocol():
     delim = "<!>"
@@ -17,6 +18,7 @@ class Protocol():
         self.Ackreadlock = threading.Lock()
         self.TriDuplock = threading.Lock()
         self.DataArraylock = threading.Lock()
+        self.
 
     def create_socket(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -126,31 +128,56 @@ class Protocol():
         data+=str(seq)
         return data
 
-    def recvACK(self, AckArray, TripleDUP, sock):
+    def recvACK(self, AckArray, TripleDUP, sock, num_packets):
         ''' 
         If lock on both: As we receive ack, put it in the ACK list, and increment corresponding next expected seq number in
         TripleDUP list 
         '''
-        #check if within window
+        address = 0
+
+        self.sender_window_start = 0
+        self.sender_window_end = self.window_size-1
+        seq_window = 2*self.window_size
+
         while True:
             data, address = sock.recvfrom(65555)
             data = data.decode('ascii')
             line = data.split('<!>')
-            print(line)
-            self.Acklock.acquire()
-            AckArray[int(line[0])]=1
-            print(AckArray)
-            self.Acklock.release()
-            TripleDUP[int(line[1])]+=1
-            if TripleDUP[int(line[1])] >=3:
+            # print(line)
+
+            packet_num = int(line[0])
+
+            #check if within the window
+            if(not (self.sender_window_start < self.sender_window_end and packet_num >= self.sender_window_start and packet_num <= self.sender_window_end)):
+                continue
+
+            if(not (self.sender_window_start > self.sender_window_end and (packet_num >= self.sender_window_start or packet_num <= self.sender_window_end))):
+                continue
+
+            if(AckArray[packet_num]==0):
                 self.Acklock.acquire()
-                AckArray[int(line[1])]=2
+                AckArray[packet_num]=1
+                num_packets-=1
                 self.Acklock.release()
-            # if line[1][-1] =='.':
-            #     break
+
+                #increase window or not
+                if(packet_num == self.sender_window_start):
+                    while(AckArray[self.sender_window_start]==1):
+                        self.sender_window_start = (self.sender_window_start+1)%seq_window
+                        self.sender_window_end = (self.sender_window_end+1)%seq_window
+
+            TripleDUP[packet_num]+=1
+            if TripleDUP[packet_num] >=3:
+                self.Acklock.acquire()
+                AckArray[packet_num]=2
+                self.Acklock.release()
+            
+            if (num_packets == 0) :
+                break
             '''
             To implement end of recieving ACKs and stop the server using break
             '''
+        close(sock, address)
         return
 
     def Timeout(self):
@@ -201,16 +228,17 @@ class Protocol():
         ACK array-same size 0-not received, 1- received, 2 - retrans
         Triple-DUP ack array, intialized to 0, increment 1 when a corresponding next expected seq number received
         '''
-        self.sender_window_start = 0
+        
         seq_window = 2*self.window_size
-        self.sender_window_end = self.window_size-1
+        
         AckArray = [0]*seq_window
         TripleDUP = [0]*seq_window
         data_sent = 0
         length = len(msg)
+        num_packets = math.ceil(length/self.msg_size)
         seq=0
         count=[0]
-        Thread(target=self.recvACK, args=(AckArray, TripleDUP, sock)).start()
+        Thread(target=self.recvACK, args=(AckArray, TripleDUP, sock, num_packets)).start()
         while count[0] < self.window_size and data_sent < length/self.msg_size:
             while(data_sent < length/self.msg_size and count[0]<self.window_size):
                 data = msg[data_sent*self.msg_size:(data_sent+1)*self.msg_size]
@@ -242,7 +270,6 @@ class Protocol():
         curr_seq_write[0] = (curr_seq_write[0]+1)%(seq_window)
 
         return None
-
 
     def recvDataPackets(self, address, sock):
         ''' 
