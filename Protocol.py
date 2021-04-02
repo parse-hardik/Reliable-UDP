@@ -3,6 +3,7 @@ import hashlib
 from threading import Thread
 import time
 import threading
+import sys
 
 class Protocol():
     delim = "<!>"
@@ -110,6 +111,24 @@ class Protocol():
         print("Socket closing successfull")
         return 1
 
+    def closeConn(self, sock, address):
+        finack = self.makeDataPacket("FIN-ACK", 0, 1, 1, 0)
+        sock.sendto(finack.encode(), address)
+        sock.settimeout(self.timeout_time)
+        while True:
+            try:
+                data, address = sock.recvfrom(4096)
+            except socket.timeout as e:
+                err = e.args[0]
+                if err == 'timed out':
+                    sock.sendto(finack.encode(), address)
+                    continue
+            data = data.decode('ascii')
+            data = data.split(self.delim)
+            if int(data[3])==-1 and int(data[1])!=0:
+                break
+        return None
+
     def makeDataPacket(self, info, SYN, ACK, FIN, seq):
         data=""
         data+=str(SYN) + self.delim
@@ -194,6 +213,14 @@ class Protocol():
                 sock.sendto(message, address)
                 timer = Thread(target=self.Timeout)
                 timer.start()
+
+    def sendFile(self, sock, address, file):
+        msg=""
+        f = file.open()
+        msg+=f.read(4096)
+        f.close()
+        self.sendDataPackets(msg, sock, address)
+        return None
 
     def sendDataPackets(self, msg, sock, address):
         ''' 
