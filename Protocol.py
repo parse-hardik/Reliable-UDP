@@ -19,6 +19,7 @@ class Protocol():
         self.Ackreadlock = threading.Lock()
         self.TriDuplock = threading.Lock()
         self.DataArraylock = threading.Lock()
+        self.senderThreadCountLock = threading.Lock()
 
     def create_socket(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -203,7 +204,9 @@ class Protocol():
         return None
 
     def ThreadSend(self, AckArray, TripleDUP, message, sock, address, count , name):
+        self.senderThreadCountLock.acquire()
         count[0]+=1
+        self.senderThreadCountLock.release()
         message = message.encode()
         sock.sendto(message, address)
         timer = Thread(target=self.Timeout)
@@ -228,7 +231,9 @@ class Protocol():
                 self.Ackreadlock.release()
 
                 if(status==1) :
+                    self.senderThreadCountLock.acquire()
                     count[0]-=1
+                    self.senderThreadCountLock.release()
                     return None
                 elif (status == 2) : #triple dup retransmission
                     #check do I need to kill prev thread
@@ -242,8 +247,8 @@ class Protocol():
 
     def sendFile(self, sock, address, file):
         msg=""
-        f = file.open()
-        msg+=f.read(4096)
+        f = open(file, "r")
+        msg+=f.read()
         f.close()
         self.sendDataPackets(msg, sock, address)
         return None
@@ -320,6 +325,12 @@ class Protocol():
             info = True
             text = data.decode('ascii')
             text = text.split('<!>')
+
+            #Fin bit received
+            if(int(text[2])==1):
+                self.closeConn(sock, address)
+                return info
+
             message_num = int(text[3])
 
             #if message not in given window

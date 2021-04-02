@@ -6,9 +6,8 @@ def server(address):
     sock = proto.create_socket()
     sock.bind(address)
     file_requested, add = proto.listen(sock)
-    # with open(file_requested, "r") as file:
-    info = "Enjoyed minutes related as at on on. Is fanny dried as often me. Goodness as reserved raptures to mistaken steepest oh screened he. Gravity he mr sixteen esteems. Mile home its new way with high told said."
-    proto.sendDataPackets(info, sock, add)
+    # info = "Enjoyed minutes related as at on on. Is fanny dried as often me. Goodness as reserved raptures to mistaken steepest oh screened he. Gravity he mr sixteen esteems. Mile home its new way with high told said."
+    proto.sendFile(sock, add, file_requested)
     proto.close(sock, add)
     return
 
