@@ -17,7 +17,7 @@ class Protocol():
         self.Acklock = threading.Lock()
         self.Ackread = 0
         self.Ackreadlock = threading.Lock()
-        self.TriDuplock = threading.Lock()
+        self.windowlock = threading.Lock()
         self.DataArraylock = threading.Lock()
         self.senderThreadCountLock = threading.Lock()
 
@@ -105,14 +105,14 @@ class Protocol():
             
             data = data.split('<!>')
             print(data)
-            if int(data[2])!=0 and int(data[1])!=0:
+            if len(data)>2 and int(data[2])!=0 and int(data[1])!=0:
                 break
         
         
         ack = self.makeDataPacket("Closing", 0, 1, 0, -1)
         sock.sendto(ack.encode(), address)
         sock.settimeout(None)
-        print("Socket closing successfull")
+        print("Socket closing successful")
         return 1
 
     def closeConn(self, sock, address):
@@ -156,56 +156,53 @@ class Protocol():
         '''
         address = 0
 
-        self.sender_window_start = 0
-        self.sender_window_end = self.window_size-1
         seq_window = 2*self.window_size
 
         while True:
             data, address = sock.recvfrom(65555)
             data = data.decode('ascii')
             line = data.split('<!>')
-            print(line)
+            # print(line)
 
             packet_num = int(line[0])
-            print(self.sender_window_start, self.sender_window_end)
-            print("ACK received ", packet_num)
-            print(AckArray)
+            next_expec = int(line[1])
+
             #check if within the window
             if(not ((self.sender_window_start < self.sender_window_end and packet_num >= self.sender_window_start and packet_num <= self.sender_window_end) or (self.sender_window_start > self.sender_window_end and (packet_num >= self.sender_window_start or packet_num <= self.sender_window_end)) )):
-                print(f"Packet {packet_num} does not belong to current window from {self.sender_window_start} to {self.sender_window_end}")
+                #print(f"Packet {packet_num} does not belong to current window from {self.sender_window_start} to {self.sender_window_end}")
                 continue
 
-            if(AckArray[packet_num]!=4):
+            #got Ack again
+            if(AckArray[packet_num]!=1 or AckArray[packet_num] !=4):
                 self.Acklock.acquire()
                 AckArray[packet_num]=1
-                print("ACK intermediate ", packet_num)
-                print(AckArray)
+                #print(f"got Ack for {packet_num}")
+                #print(AckArray)
                 num_packets-=1
-                print(packet_num, num_packets)
+                #print(packet_num, num_packets)
 
-                #increase window or not
-                # if(packet_num == self.sender_window_start):
                 while(AckArray[self.sender_window_start]==4):
+                    
                     AckArray[self.sender_window_start]=0
                     TripleDUP[self.sender_window_start]=0
+
+                    self.windowlock.acquire()
                     self.sender_window_start = (self.sender_window_start+1)%seq_window
                     self.sender_window_end = (self.sender_window_end+1)%seq_window
-                    self.senderThreadCountLock.acquire()
-                    count[0]-=1
-                    self.senderThreadCountLock.release()
+                    self.windowlock.release()
+
                 self.Acklock.release()
-            print("ACK updated")
-            print(AckArray)
-            TripleDUP[packet_num]+=1
-            print("Triple DUP")
-            print(TripleDUP)
-            if TripleDUP[packet_num] >=3:
+
+            #print(f"window size {self.sender_window_start} to {self.sender_window_end}")
+            #print(f"updated ACK array {AckArray}")
+            TripleDUP[next_expec]+=1
+            # print(f"updated Triple DUP {TripleDUP}")
+            if TripleDUP[next_expec] >=3:
                 self.Acklock.acquire()
-                AckArray[packet_num]=2
-                TripleDUP[packet_num]=0
+                AckArray[next_expec]=2
+                TripleDUP[next_expec]=0
                 self.Acklock.release()
             
-            print("1")
             if (num_packets == 0) :
                 print(packet_num, num_packets)
                 break
@@ -285,14 +282,15 @@ class Protocol():
 
     def sendFile(self, sock, address, file):
         f = open(file, "r")
-        msg=""
-        while True:
-            line=f.readline()
-            if not line:
-                break
-            msg+=line[0:-2] + " "
+        msg = f.read()
+        # msg=""
+        # while True:
+        #     line=f.readline()
+        #     if not line:
+        #         break
+        #     msg+=line[0:-1] + " "
         f.close()
-        print(msg)
+        # print(msg,"hii")
         self.sendDataPackets(msg, sock, address)
         return None
 
@@ -309,18 +307,46 @@ class Protocol():
         data_sent = 0
         length = len(msg)
         num_packets = math.ceil(length/self.msg_size)
+        self.sender_window_start = 0
+        self.sender_window_end = self.window_size-1
+
+        #managing sending window
         seq=0
+        seq_start = 0
+
         count=[0]
         Thread(target=self.recvACK, args=(AckArray, TripleDUP, sock, num_packets, count)).start()
-        while count[0] < self.window_size and data_sent < length/self.msg_size:
-            while(data_sent < length/self.msg_size and count[0]<self.window_size):
+
+        #first window 
+        while(data_sent < length/self.msg_size and count[0]<self.window_size):
+            # print(f"sending {seq} ")
+            data = msg[data_sent*self.msg_size:(data_sent+1)*self.msg_size]
+            data = self.makeDataPacket(data, 0, 0, 0, seq)
+            Thread(target=self.ThreadSend, args=(AckArray, TripleDUP, data, sock, address, count, seq), name=seq).start() 
+            data_sent+=1
+            seq = (seq+1)%seq_window
+
+        #later transmissions
+        while data_sent < length/self.msg_size:
+            
+            self.windowlock.acquire()
+            window_st = self.sender_window_start
+            window_end = self.sender_window_end
+            self.windowlock.release()
+
+            while data_sent < length/self.msg_size and (seq_start < window_st or (window_st < window_end and seq_start > window_end)):
+                # print(f"sending {seq} for window {window_st} to {window_end}")
+                # print(f"{seq_start} prev start to {window_st}")
                 data = msg[data_sent*self.msg_size:(data_sent+1)*self.msg_size]
                 data = self.makeDataPacket(data, 0, 0, 0, seq)
                 Thread(target=self.ThreadSend, args=(AckArray, TripleDUP, data, sock, address, count, seq), name=seq).start() 
                 data_sent+=1
                 seq = (seq+1)%seq_window
-            while count[0] == self.window_size:
-                pass
+                seq_start = (seq_start+1)%seq_window
+
+
+            
+            
         return None
 
     def writeData(self, name, curr_seq_write, DataArray):
@@ -410,6 +436,6 @@ class Protocol():
             
             message = self.makeACKPacket(message_num,next_expec)
             message = message.encode()
-            print(message)
+            # print(message)
             sock.sendto(message, address)
         return None
