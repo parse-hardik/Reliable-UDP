@@ -242,7 +242,7 @@ class Protocol():
         return
 
     def Timeout(self):
-        time.sleep(7)
+        time.sleep(2)
         return None
 
     def ThreadSend(self, AckArray, TripleDUP, message, sock, address, count , name):
@@ -362,8 +362,6 @@ class Protocol():
         output_file.write(msg)
         output_file.close()
 
-        # self.DataArraylock.acquire()
-        # self.DataArraylock.release()
 
         seq_window = 2*self.window_size
         curr_seq_write[0] = (curr_seq_write[0]+1)%(seq_window)
@@ -383,7 +381,7 @@ class Protocol():
         self.recv_window_end = self.window_size - 1
         info = False
         curr_seq_write = [0] #current seq that needs to be written
-        sock.settimeout(15)
+        sock.settimeout(40)
         last_sent = 0
         while True:
             try:
@@ -433,7 +431,6 @@ class Protocol():
                 continue
 
             #if not logic
-            # print(text)
             self.DataArraylock.acquire()
             if(DataArray[message_num] == ""):
                 DataArray[message_num] = original_message
@@ -443,6 +440,7 @@ class Protocol():
                     self.DataArraylock.acquire()
                     next_string = DataArray[next_expec]
                     self.DataArraylock.release()
+                    
 
                     if(next_string==""):
                         break
@@ -451,6 +449,8 @@ class Protocol():
                     next_expec = (next_expec+1)%seq_window
                     self.recv_window_end =  (self.recv_window_end+1)%seq_window
             
+            else :
+                self.DataArraylock.release()
             last_sent = message_num
             message = self.makeACKPacket(message_num,next_expec)
             message = message.encode()
