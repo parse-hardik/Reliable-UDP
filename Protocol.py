@@ -25,7 +25,7 @@ class Protocol():
     def create_socket(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         return sock
-
+        
     def connect(self, sock, address, window, file_name_path):
         # self.window_size = window
         print("Three way handshake initiated")
