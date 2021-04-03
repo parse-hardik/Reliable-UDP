@@ -5,6 +5,7 @@ import time
 import threading
 import sys
 import math
+import os
 
 class Protocol():
     delim = "<!>"
@@ -162,28 +163,52 @@ class Protocol():
             data, address = sock.recvfrom(65555)
             data = data.decode('ascii')
             line = data.split('<!>')
-            # print(line)
+            print(line)
 
             packet_num = int(line[0])
             next_expec = int(line[1])
 
             #check if within the window
             if(not ((self.sender_window_start < self.sender_window_end and packet_num >= self.sender_window_start and packet_num <= self.sender_window_end) or (self.sender_window_start > self.sender_window_end and (packet_num >= self.sender_window_start or packet_num <= self.sender_window_end)) )):
-                #print(f"Packet {packet_num} does not belong to current window from {self.sender_window_start} to {self.sender_window_end}")
+                print(f"Packet {packet_num} does not belong to current window from {self.sender_window_start} to {self.sender_window_end}")
                 continue
+
+            # Mark Ack received from window start to next_expec
+            cpy = self.sender_window_start
+            self.Acklock.acquire()
+            while(cpy != next_expec):
+                if cpy == packet_num:
+                    cpy = (cpy+1)%seq_window
+                    continue
+                if(AckArray[cpy]!=1 or AckArray[cpy]!=4):
+                    AckArray[cpy] = 1
+                    num_packets-=1
+                cpy = (cpy+1)%seq_window
+                # print(cpy, next_expec)
+            print(AckArray)
+            print(cpy,self.sender_window_start)
+            self.Acklock.release()
+
 
             #got Ack again
             if(AckArray[packet_num]!=1 or AckArray[packet_num] !=4):
                 self.Acklock.acquire()
                 AckArray[packet_num]=1
-                #print(f"got Ack for {packet_num}")
-                #print(AckArray)
+                self.Acklock.release()
+                print(f"\n\ngot Ack for {packet_num}")
+                print(AckArray)
                 num_packets-=1
-                #print(packet_num, num_packets)
+                print(packet_num, num_packets)
 
-                while(AckArray[self.sender_window_start]==4):
+                while(AckArray[self.sender_window_start]==4 or AckArray[self.sender_window_start]==1 ):
                     
+                    while(AckArray[self.sender_window_start]==1):
+                        pass
+
+                    self.Acklock.acquire()
                     AckArray[self.sender_window_start]=0
+                    self.Acklock.release()
+
                     TripleDUP[self.sender_window_start]=0
 
                     self.windowlock.acquire()
@@ -191,12 +216,12 @@ class Protocol():
                     self.sender_window_end = (self.sender_window_end+1)%seq_window
                     self.windowlock.release()
 
-                self.Acklock.release()
+                
 
-            #print(f"window size {self.sender_window_start} to {self.sender_window_end}")
-            #print(f"updated ACK array {AckArray}")
+            print(f"window size {self.sender_window_start} to {self.sender_window_end}")
+            print(f"updated ACK array {AckArray}")
             TripleDUP[next_expec]+=1
-            # print(f"updated Triple DUP {TripleDUP}")
+            print(f"updated Triple DUP {TripleDUP}")
             if TripleDUP[next_expec] >=3:
                 self.Acklock.acquire()
                 AckArray[next_expec]=2
@@ -213,7 +238,7 @@ class Protocol():
         return
 
     def Timeout(self):
-        time.sleep(self.timeout_time)
+        time.sleep(5)
         return None
 
     def ThreadSend(self, AckArray, TripleDUP, message, sock, address, count , name):
@@ -273,14 +298,20 @@ class Protocol():
                 elif (status == 2) : #triple dup retransmission
                     #check do I need to kill prev thread
                     sock.sendto(message, address)
+                    # print(f"Triple dup sending {name} ")
                     timer = Thread(target=self.Timeout)
                     timer.start()
             else:
                 sock.sendto(message, address)
+                # print(f"timeout sending  {message} ")
                 timer = Thread(target=self.Timeout)
                 timer.start()
 
     def sendFile(self, sock, address, file):
+
+        if os.path.exists("output.txt"):
+            os.remove("output.txt")
+
         f = open(file, "r")
         msg = f.read()
         # msg=""
@@ -319,13 +350,13 @@ class Protocol():
 
         #first window 
         while(data_sent < length/self.msg_size and count[0]<self.window_size):
-            # print(f"sending {seq} ")
+            print(f"sending {seq} ")
             data = msg[data_sent*self.msg_size:(data_sent+1)*self.msg_size]
             data = self.makeDataPacket(data, 0, 0, 0, seq)
             Thread(target=self.ThreadSend, args=(AckArray, TripleDUP, data, sock, address, count, seq), name=seq).start() 
             data_sent+=1
             seq = (seq+1)%seq_window
-
+            # time.sleep(0.01)
         #later transmissions
         while data_sent < length/self.msg_size:
             
@@ -335,8 +366,8 @@ class Protocol():
             self.windowlock.release()
 
             while data_sent < length/self.msg_size and (seq_start < window_st or (window_st < window_end and seq_start > window_end)):
-                # print(f"sending {seq} for window {window_st} to {window_end}")
-                # print(f"{seq_start} prev start to {window_st}")
+                print(f"sending {seq} for window {window_st} to {window_end}")
+                print(f"{seq_start} prev start to {window_st}")
                 data = msg[data_sent*self.msg_size:(data_sent+1)*self.msg_size]
                 data = self.makeDataPacket(data, 0, 0, 0, seq)
                 Thread(target=self.ThreadSend, args=(AckArray, TripleDUP, data, sock, address, count, seq), name=seq).start() 
@@ -376,23 +407,28 @@ class Protocol():
         Recieve packets and put them in data array(list of strings- size same as seq numbers)
         Check if the current packet is already 
         '''
+        
         seq_window = 2*self.window_size
         DataArray = [""]*seq_window
         next_expec = 0
         self.recv_window_end = self.window_size - 1
         info = False
         curr_seq_write = [0] #current seq that needs to be written
-        sock.settimeout(20)
+        sock.settimeout(5)
         while True:
             try:
                 data, address = sock.recvfrom(4096)
             except socket.timeout as e:
                 err = e.args[0]
                 if err == 'timed out':
+                    print(next_expec,info)
                     return info
+            
             info = True
             text = data.decode('ascii')
             text = text.split('<!>')
+            print(text)
+            
 
             #Fin bit received
             if(int(text[2])==1):
@@ -403,6 +439,7 @@ class Protocol():
 
             #if message not in given window
             if(not ((next_expec < self.recv_window_end and message_num >= next_expec and message_num<=self.recv_window_end) or (next_expec > self.recv_window_end and (message_num >= next_expec or message_num<=self.recv_window_end )))):
+                print(f"got a packet {message_num} not within window {next_expec} {self.recv_window_end} ")
                 continue
             
             original_message = text[4][2:-1]
@@ -415,7 +452,7 @@ class Protocol():
                 continue
 
             #if not logic
-            print(text)
+            # print(text)
             self.DataArraylock.acquire()
             if(DataArray[message_num] !=""):
                 continue
@@ -436,6 +473,6 @@ class Protocol():
             
             message = self.makeACKPacket(message_num,next_expec)
             message = message.encode()
-            # print(message)
+            print(message)
             sock.sendto(message, address)
         return None
