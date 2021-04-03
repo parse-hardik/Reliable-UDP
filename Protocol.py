@@ -384,6 +384,7 @@ class Protocol():
         info = False
         curr_seq_write = [0] #current seq that needs to be written
         sock.settimeout(15)
+        last_sent = 0
         while True:
             try:
                 data, address = sock.recvfrom(4096)
@@ -410,6 +411,8 @@ class Protocol():
             #if message not in given window
             if(not ((next_expec < self.recv_window_end and message_num >= next_expec and message_num<=self.recv_window_end) or (next_expec > self.recv_window_end and (message_num >= next_expec or message_num<=self.recv_window_end )))):
                 # print(f"got a packet {message_num} not within window {next_expec} {self.recv_window_end} ")
+                message = self.makeACKPacket(last_sent,next_expec)
+                message = message.encode()
                 sock.sendto(message, address)
                 print(message)
                 continue
@@ -421,6 +424,8 @@ class Protocol():
             check_hash = str(hashlib.sha1(original_message.encode()).hexdigest())
 
             if (check_hash != hashed_message):
+                message = self.makeACKPacket(last_sent,next_expec)
+                message = message.encode()
                 sock.sendto(message, address)
                 print(message)
                 continue
@@ -444,6 +449,7 @@ class Protocol():
                     next_expec = (next_expec+1)%seq_window
                     self.recv_window_end =  (self.recv_window_end+1)%seq_window
             
+            last_sent = message_num
             message = self.makeACKPacket(message_num,next_expec)
             message = message.encode()
             print(f"sending {message}")
