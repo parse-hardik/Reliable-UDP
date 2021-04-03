@@ -256,7 +256,6 @@ class Protocol():
         while True :
             if(timer.is_alive()):
                 
-
                 status = AckArray[name]
 
                 if(status==1) :
@@ -422,27 +421,28 @@ class Protocol():
             check_hash = str(hashlib.sha1(original_message.encode()).hexdigest())
 
             if (check_hash != hashed_message):
+                sock.sendto(message, address)
+                print(message)
                 continue
 
             #if not logic
             # print(text)
             self.DataArraylock.acquire()
-            if(DataArray[message_num] !=""):
-                continue
-            DataArray[message_num] = original_message
-            self.DataArraylock.release()
-
-            while True:
-                self.DataArraylock.acquire()
-                next_string = DataArray[next_expec]
+            if(DataArray[message_num] == ""):
+                DataArray[message_num] = original_message
                 self.DataArraylock.release()
 
-                if(next_string==""):
-                    break
-                
-                Thread(target=self.writeData, args=(next_expec, curr_seq_write, DataArray)).start()
-                next_expec = (next_expec+1)%seq_window
-                self.recv_window_end =  (self.recv_window_end+1)%seq_window
+                while True:
+                    self.DataArraylock.acquire()
+                    next_string = DataArray[next_expec]
+                    self.DataArraylock.release()
+
+                    if(next_string==""):
+                        break
+                    
+                    Thread(target=self.writeData, args=(next_expec, curr_seq_write, DataArray)).start()
+                    next_expec = (next_expec+1)%seq_window
+                    self.recv_window_end =  (self.recv_window_end+1)%seq_window
             
             message = self.makeACKPacket(message_num,next_expec)
             message = message.encode()
