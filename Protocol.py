@@ -149,7 +149,7 @@ class Protocol():
         data+=str(seq)
         return data
 
-    def recvACK(self, AckArray, TripleDUP, sock, num_packets):
+    def recvACK(self, AckArray, TripleDUP, sock, num_packets, count):
         ''' 
         If lock on both: As we receive ack, put it in the ACK list, and increment corresponding next expected seq number in
         TripleDUP list 
@@ -172,7 +172,7 @@ class Protocol():
             print(AckArray)
             #check if within the window
             if(not ((self.sender_window_start < self.sender_window_end and packet_num >= self.sender_window_start and packet_num <= self.sender_window_end) or (self.sender_window_start > self.sender_window_end and (packet_num >= self.sender_window_start or packet_num <= self.sender_window_end)) )):
-                print("first if")
+                print(f"Packet {packet_num} does not belong to current window from {self.sender_window_start} to {self.sender_window_end}")
                 continue
 
             if(AckArray[packet_num]!=4):
@@ -190,6 +190,9 @@ class Protocol():
                     TripleDUP[self.sender_window_start]=0
                     self.sender_window_start = (self.sender_window_start+1)%seq_window
                     self.sender_window_end = (self.sender_window_end+1)%seq_window
+                    self.senderThreadCountLock.acquire()
+                    count[0]-=1
+                    self.senderThreadCountLock.release()
                 self.Acklock.release()
             print("ACK updated")
             print(AckArray)
@@ -222,49 +225,12 @@ class Protocol():
         self.senderThreadCountLock.release()
         message = message.encode()
         sock.sendto(message, address)
-        # timer = Thread(target=self.Timeout)
-        # timer.start()
-        sock.settimeout(self.timeout_time)
-        while True:
-            try:
-                status = AckArray[name]
-                if(status==1) :
-                    self.Acklock.acquire()
-                    AckArray[name] = 4
-                    self.Acklock.release()
-                    self.senderThreadCountLock.acquire()
-                    count[0]-=1
-                    self.senderThreadCountLock.release()
-                    return None
-                elif (status == 2) : #triple dup retransmission
-                    #check do I need to kill prev thread
-                    sock.sendto(message, address)
-                    sock.settimeout(self.timeout_time)
-            except socket.timeout as e:
-                err = e.args[0]
-                if err == 'timed out':
-                    sock.sendto(message, address)
-                    continue
-        sock.settimeout(None)
-        # while True :
-        #     if(timer.is_alive()):
-                
-        #         # self.Ackreadlock.acquire()
-        #         # if(not self.Ackread):
-        #         #     self.Acklock.acquire()
-        #         # self.Ackread+=1
-        #         # self.Ackreadlock.release()
-
+        timer = Thread(target=self.Timeout)
+        timer.start()
+        # sock.settimeout(self.timeout_time)
+        # while True:
+        #     try:
         #         status = AckArray[name]
-
-        #         # self.Ackreadlock.acquire()
-        #         # self.Ackread-=1
-
-        #         # if(not self.Ackread):
-        #         #     self.Acklock.release()
-                
-        #         # self.Ackreadlock.release()
-
         #         if(status==1) :
         #             self.Acklock.acquire()
         #             AckArray[name] = 4
@@ -276,12 +242,46 @@ class Protocol():
         #         elif (status == 2) : #triple dup retransmission
         #             #check do I need to kill prev thread
         #             sock.sendto(message, address)
-        #             timer = Thread(target=self.Timeout)
-        #             timer.start()
-        #     else:
-        #         sock.sendto(message, address)
-        #         timer = Thread(target=self.Timeout)
-        #         timer.start()
+        #             sock.settimeout(self.timeout_time)
+        #     except socket.timeout as e:
+        #         err = e.args[0]
+        #         if err == 'timed out':
+        #             sock.sendto(message, address)
+        #             continue
+        # sock.settimeout(None)
+        while True :
+            if(timer.is_alive()):
+                
+                # self.Ackreadlock.acquire()
+                # if(not self.Ackread):
+                #     self.Acklock.acquire()
+                # self.Ackread+=1
+                # self.Ackreadlock.release()
+
+                status = AckArray[name]
+
+                # self.Ackreadlock.acquire()
+                # self.Ackread-=1
+
+                # if(not self.Ackread):
+                #     self.Acklock.release()
+                
+                # self.Ackreadlock.release()
+
+                if(status==1) :
+                    self.Acklock.acquire()
+                    AckArray[name] = 4
+                    self.Acklock.release()
+                    return None
+                elif (status == 2) : #triple dup retransmission
+                    #check do I need to kill prev thread
+                    sock.sendto(message, address)
+                    timer = Thread(target=self.Timeout)
+                    timer.start()
+            else:
+                sock.sendto(message, address)
+                timer = Thread(target=self.Timeout)
+                timer.start()
 
     def sendFile(self, sock, address, file):
         f = open(file, "r")
@@ -304,7 +304,6 @@ class Protocol():
         '''
         
         seq_window = 2*self.window_size
-        
         AckArray = [0]*seq_window
         TripleDUP = [0]*seq_window
         data_sent = 0
@@ -312,7 +311,7 @@ class Protocol():
         num_packets = math.ceil(length/self.msg_size)
         seq=0
         count=[0]
-        Thread(target=self.recvACK, args=(AckArray, TripleDUP, sock, num_packets)).start()
+        Thread(target=self.recvACK, args=(AckArray, TripleDUP, sock, num_packets, count)).start()
         while count[0] < self.window_size and data_sent < length/self.msg_size:
             while(data_sent < length/self.msg_size and count[0]<self.window_size):
                 data = msg[data_sent*self.msg_size:(data_sent+1)*self.msg_size]
@@ -357,7 +356,7 @@ class Protocol():
         self.recv_window_end = self.window_size - 1
         info = False
         curr_seq_write = [0] #current seq that needs to be written
-        sock.settimeout(2)
+        sock.settimeout(20)
         while True:
             try:
                 data, address = sock.recvfrom(4096)
