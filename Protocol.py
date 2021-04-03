@@ -406,6 +406,8 @@ class Protocol():
                 return info
 
             message_num = int(text[3])
+            if message_num==-1:
+                continue
             print(f"got a packet {message_num} in window {next_expec} {self.recv_window_end} ")
 
             #if message not in given window
