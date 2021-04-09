@@ -8,7 +8,7 @@ delim = "<!>"
 max_retrans = 13
 timeout_handshake = 10
 timeout_acks = 1
-msglen = 240
+msglen = 10
 
 class RelProtocol():
 

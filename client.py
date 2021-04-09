@@ -20,3 +20,5 @@ if __name__ == '__main__':
 
 #To Run client use
 #python server.py localhost
+#netem settings commands
+#sudo tc qdisc add dev lo root netem loss 90%
