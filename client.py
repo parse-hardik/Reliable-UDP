@@ -7,7 +7,7 @@ def client(address):
     sock.bind(('localhost', 5000))
     recv = False
     while not recv:
-        proto.connect(sock, address, 5, "trial2.txt")
+        proto.connect(sock, address, 8, "trial2.txt")
         recv = proto.recvDataPackets(address, sock)
     return
 
@@ -17,3 +17,6 @@ if __name__ == '__main__':
     parser.add_argument('-p', metavar='PORT', type=int, default=6000, help='Reliable UDP port')
     args = parser.parse_args()
     client((args.host, args.p))
+
+#To Run client use
+#python server.py localhost

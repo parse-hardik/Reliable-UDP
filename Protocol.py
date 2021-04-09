@@ -6,18 +6,17 @@ import threading
 import sys
 import math
 import os
+import datetime
 
 class Protocol():
     delim = "<!>"
     msg_size = 5
-    window_size = 5
-    timeout_time = 1
+    window_size = 8
+    timeout_time = 10
     MAX_BYTES = 65555
     def __init__(self):
         print("Reliable UDP Protocol Initiated")
         self.Acklock = threading.Lock()
-        self.Ackread = 0
-        self.Ackreadlock = threading.Lock()
         self.windowlock = threading.Lock()
         self.DataArraylock = threading.Lock()
         self.senderThreadCountLock = threading.Lock()
@@ -30,7 +29,7 @@ class Protocol():
         # self.window_size = window
         print("Three way handshake initiated")
         syn = self.makeDataPacket("Hello", self.window_size, 0, 0, 0)
-        sock.sendto(syn.encode(), address)
+        sock.sendto(bytes(syn.encode()), address)
         sock.settimeout(self.timeout_time)
         while True:
             try:
@@ -38,16 +37,15 @@ class Protocol():
             except socket.timeout as e:
                 err = e.args[0]
                 if err == 'timed out':
-                    sock.sendto(syn.encode(), address)
+                    sock.sendto(bytes(syn.encode()), address)
                     continue
-            data = data.decode('ascii')
+            data = data.decode()
             data = data.split(self.delim)
             if int(data[0])!=0 and int(data[1])!=0:
                 break
         
-        
         ack = self.makeDataPacket(file_name_path, 0, 1, 0, -1)
-        sock.sendto(ack.encode(), address)
+        sock.sendto(bytes(ack.encode()), address)
         sock.settimeout(None)
         print("Three way handshake successfull")
         return 1
@@ -56,13 +54,14 @@ class Protocol():
         flag=0
         while True:
             data, address = sock.recvfrom(4096)
-            data = data.decode('ascii')
+            print(f"Got a connection request from {address}")
+            data = data.decode()
             data = data.split(self.delim)
             if int(data[0])==0:
                 continue
             self.window_size = int(data[0])
             synack = self.makeDataPacket("", 1, 1, 0, -1)
-            sock.sendto(synack.encode(), address)
+            sock.sendto(bytes(synack.encode()), address)
             sock.settimeout(self.timeout_time)
             while True:
                 try:
@@ -71,12 +70,12 @@ class Protocol():
                 except socket.timeout as e:
                     err = e.args[0]
                     if err == 'timed out':
-                        sock.sendto(synack.encode(), address)
+                        sock.sendto(bytes(synack.encode()), address)
                         continue
-                data = data.decode('ascii')
+                data = data.decode()
                 data = data.split(self.delim)
                 if int(data[1])==1 and int(data[3])==-1:
-                    self.file_to_send = data[4][2:-1]
+                    self.file_to_send = data[4]
                     check = str(hashlib.sha1(self.file_to_send.encode()).hexdigest())
                     if check!=data[5]:
                         break
@@ -86,13 +85,13 @@ class Protocol():
                 break
             
         sock.settimeout(None)
-        print('Received connection from {} and is requesting {}'.format(address, self.file_to_send))
+        print('Connection {} is requesting {}'.format(address, self.file_to_send))
         return self.file_to_send, address
 
     def close(self, sock, address):
         print("Socket closing initiated")
         fin = self.makeDataPacket("Close", 0, 0, 1, 0)
-        sock.sendto(fin.encode(), address)
+        sock.sendto(bytes(fin.encode()), address)
         sock.settimeout(self.timeout_time)
         while True:
             try:
@@ -100,9 +99,9 @@ class Protocol():
             except socket.timeout as e:
                 err = e.args[0]
                 if err == 'timed out':
-                    sock.sendto(fin.encode(), address)
+                    sock.sendto(bytes(fin.encode()), address)
                     continue
-            data = data.decode('ascii')
+            data = data.decode()
             
             data = data.split('<!>')
             print(data)
@@ -111,14 +110,14 @@ class Protocol():
         
         
         ack = self.makeDataPacket("Closing", 0, 1, 0, -1)
-        sock.sendto(ack.encode(), address)
+        sock.sendto(bytes(ack.encode()), address)
         sock.settimeout(None)
         print("Socket closing successful")
         return 1
 
     def closeConn(self, sock, address):
         finack = self.makeDataPacket("FIN-ACK", 0, 1, 1, 0)
-        sock.sendto(finack.encode(), address)
+        sock.sendto(bytes(finack.encode()), address)
         sock.settimeout(self.timeout_time)
         while True:
             try:
@@ -126,9 +125,9 @@ class Protocol():
             except socket.timeout as e:
                 err = e.args[0]
                 if err == 'timed out':
-                    sock.sendto(finack.encode(), address)
+                    sock.sendto(bytes(finack.encode()), address)
                     continue
-            data = data.decode('ascii')
+            data = data.decode()
             data = data.split(self.delim)
             if int(data[3])==-1 and int(data[1])!=0:
                 break
@@ -140,7 +139,7 @@ class Protocol():
         data+=str(ACK) + self.delim
         data+=str(FIN) + self.delim
         data+=str(seq) + self.delim
-        data+=str(info.encode('ascii')) + self.delim
+        data+=str(info) + self.delim
         data+=str(hashlib.sha1(info.encode()).hexdigest())
         return data
 
@@ -156,19 +155,18 @@ class Protocol():
         TripleDUP list 
         '''
         address = 0
-
         seq_window = 2*self.window_size
 
         while True:
             data, address = sock.recvfrom(65555)
-            data = data.decode('ascii')
+            data = data.decode()
             line = data.split('<!>')
             print(line)
 
             packet_num = int(line[0])
             next_expec = int(line[1])
             
-            print(f"Packet {packet_num} in current window from {self.sender_window_start} to {self.sender_window_end}")
+            print(f"{datetime.datetime.now().time()} : Packet {packet_num} in current window from {self.sender_window_start} to {self.sender_window_end}")
 
 
             #check if within the window
@@ -179,7 +177,7 @@ class Protocol():
             # Mark Ack received from window start to next_expec
             cpy = self.sender_window_start
             self.Acklock.acquire()
-            print(AckArray,"before")
+            # print(AckArray,"before")
             while(cpy != next_expec):
                 if cpy == packet_num:
                     cpy = (cpy+1)%seq_window
@@ -189,8 +187,8 @@ class Protocol():
                     num_packets-=1
                 cpy = (cpy+1)%seq_window
                 # print(cpy, next_expec)
-            print(AckArray ,"for packet",{packet_num},self.sender_window_start, next_expec)
-            print(cpy,self.sender_window_start)
+            # print(AckArray ,"for packet",packet_num,self.sender_window_start, next_expec)
+            # print(cpy,self.sender_window_start)
             self.Acklock.release()
 
 
@@ -200,7 +198,7 @@ class Protocol():
                 AckArray[packet_num]=1
                 self.Acklock.release()
                 # print(f"\n\ngot Ack for {packet_num}")
-                print(AckArray)
+                # print(AckArray)
                 num_packets-=1
                 print(packet_num, num_packets)
 
@@ -222,7 +220,7 @@ class Protocol():
 
                 
 
-            print(f"window size {self.sender_window_start} to {self.sender_window_end}")
+            print(f"{datetime.datetime.now().time()} : window size {self.sender_window_start} to {self.sender_window_end}")
             # print(f"updated ACK array {AckArray}")
             TripleDUP[next_expec]+=1
             # print(f"updated Triple DUP {TripleDUP}")
@@ -242,7 +240,7 @@ class Protocol():
         return
 
     def Timeout(self):
-        time.sleep(2)
+        time.sleep(5)
         return None
 
     def ThreadSend(self, AckArray, TripleDUP, message, sock, address, count , name):
@@ -250,6 +248,7 @@ class Protocol():
         count[0]+=1
         self.senderThreadCountLock.release()
         message = message.encode()
+        message = bytes(message)
         sock.sendto(message, address)
         timer = Thread(target=self.Timeout)
         timer.start()
@@ -267,30 +266,21 @@ class Protocol():
                 #triple dup retransmission
                 elif (status == 2) : 
                     sock.sendto(message, address)
-                    print(f"Triple dup sending {name} ")
+                    print(f"{datetime.datetime.now().time()} : Triple dup sending {name} ")
                     timer = Thread(target=self.Timeout)
                     timer.start()
             else:
                 sock.sendto(message, address)
-                print(f"timeout sending  {message} ")
+                print(f"{datetime.datetime.now().time()} : timeout sending  {name} ")
                 timer = Thread(target=self.Timeout)
                 timer.start()
 
     def sendFile(self, sock, address, file):
-
         if os.path.exists("output.txt"):
             os.remove("output.txt")
-
         f = open(file, "r")
         msg = f.read()
-        # msg=""
-        # while True:
-        #     line=f.readline()
-        #     if not line:
-        #         break
-        #     msg+=line[0:-1] + " "
         f.close()
-        # print(msg,"hii")
         self.sendDataPackets(msg, sock, address)
         return None
 
@@ -319,7 +309,7 @@ class Protocol():
 
         #first window 
         while(data_sent < length/self.msg_size and count[0]<self.window_size):
-            print(f"sending {seq} ")
+            print(f"{datetime.datetime.now().time()} : sending {seq} ")
             data = msg[data_sent*self.msg_size:(data_sent+1)*self.msg_size]
             data = self.makeDataPacket(data, 0, 0, 0, seq)
             Thread(target=self.ThreadSend, args=(AckArray, TripleDUP, data, sock, address, count, seq), name=seq).start() 
@@ -335,18 +325,15 @@ class Protocol():
             self.windowlock.release()
 
             while data_sent < length/self.msg_size and (seq_start < window_st or (window_st < window_end and seq_start > window_end)):
-                print(f"sending {seq} for window {window_st} to {window_end}")
-                print(f"{seq_start} prev start to {window_st}")
+                print(f"{datetime.datetime.now().time()} : sending {seq} for window {window_st} to {window_end}")
+                print(f"{datetime.datetime.now().time()} : {seq_start} prev start to {window_st}")
                 data = msg[data_sent*self.msg_size:(data_sent+1)*self.msg_size]
                 data = self.makeDataPacket(data, 0, 0, 0, seq)
                 Thread(target=self.ThreadSend, args=(AckArray, TripleDUP, data, sock, address, count, seq), name=seq).start() 
                 data_sent+=1
                 seq = (seq+1)%seq_window
                 seq_start = (seq_start+1)%seq_window
-
-
-            
-            
+    
         return None
 
     def writeData(self, name, curr_seq_write, DataArray):
@@ -361,7 +348,6 @@ class Protocol():
         output_file = open("output.txt",'a')
         output_file.write(msg)
         output_file.close()
-
 
         seq_window = 2*self.window_size
         curr_seq_write[0] = (curr_seq_write[0]+1)%(seq_window)
@@ -393,11 +379,10 @@ class Protocol():
                     return info
             
             info = True
-            text = data.decode('ascii')
+            text = data.decode()
             text = text.split('<!>')
             # print(text)
             
-
             #Fin bit received
             if(int(text[2])==1):
                 self.closeConn(sock, address)
@@ -406,18 +391,19 @@ class Protocol():
             message_num = int(text[3])
             if message_num==-1:
                 continue
-            print(f"got a packet {message_num} in window {next_expec} {self.recv_window_end} ")
+            print(f"{datetime.datetime.now().time()} : got a packet {message_num} in window {next_expec} {self.recv_window_end} ")
 
             #if message not in given window
             if(not ((next_expec < self.recv_window_end and message_num >= next_expec and message_num<=self.recv_window_end) or (next_expec > self.recv_window_end and (message_num >= next_expec or message_num<=self.recv_window_end )))):
-                # print(f"got a packet {message_num} not within window {next_expec} {self.recv_window_end} ")
+                print(f"{datetime.datetime.now().time()} : got a packet {message_num} not within window {next_expec} {self.recv_window_end} ")
                 message = self.makeACKPacket(last_sent,next_expec)
                 message = message.encode()
+                message = bytes(message)
                 sock.sendto(message, address)
-                print(message)
+                # print(message)
                 continue
             
-            original_message = text[4][2:-1]
+            original_message = text[4]
             hashed_message = text[5]
 
             #check if packet is corrupted or not
@@ -426,8 +412,9 @@ class Protocol():
             if (check_hash != hashed_message):
                 message = self.makeACKPacket(last_sent,next_expec)
                 message = message.encode()
+                message = bytes(message)
                 sock.sendto(message, address)
-                print(message)
+                print("got wrong message", message)
                 continue
 
             #if not logic
@@ -440,7 +427,6 @@ class Protocol():
                     self.DataArraylock.acquire()
                     next_string = DataArray[next_expec]
                     self.DataArraylock.release()
-                    
 
                     if(next_string==""):
                         break
@@ -454,6 +440,7 @@ class Protocol():
             last_sent = message_num
             message = self.makeACKPacket(message_num,next_expec)
             message = message.encode()
-            print(f"sending {message}")
+            message = bytes(message)
+            print(f"{datetime.datetime.now().time()} : sending {message}")
             sock.sendto(message, address)
         return None
