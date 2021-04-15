@@ -15,7 +15,11 @@ class Protocol():
     msg_size = 240
     window_size = 8
     timeout_time = 20
+    data_packet_timeout = 5
     MAX_BYTES = 65555
+    closing_connection_timeout = 20
+    reinitiate_handshake_timeout = 5
+
     def __init__(self):
         print("Reliable UDP Protocol Initiated")
         self.Acklock = threading.Lock()
@@ -36,7 +40,7 @@ class Protocol():
         sock.settimeout(self.timeout_time)
         while True:
             try:
-                data, address = sock.recvfrom(4096)
+                data, address = sock.recvfrom(self.MAX_BYTES)
             except socket.timeout as e:
                 err = e.args[0]
                 if err == 'timed out':
@@ -56,7 +60,7 @@ class Protocol():
     def listen(self, sock):
         flag=0
         while True:
-            data, address = sock.recvfrom(4096)
+            data, address = sock.recvfrom(self.MAX_BYTES)
             print(f"Got a connection request from {address}")
             data = data.decode()
             data = data.split(self.delim)
@@ -68,7 +72,7 @@ class Protocol():
             sock.settimeout(self.timeout_time)
             while True:
                 try:
-                    data, address = sock.recvfrom(4096)
+                    data, address = sock.recvfrom(self.MAX_BYTES)
                     
                 except socket.timeout as e:
                     err = e.args[0]
@@ -100,7 +104,7 @@ class Protocol():
         sock.settimeout(self.timeout_time)
         while True:
             try:
-                data, address = sock.recvfrom(4096)
+                data, address = sock.recvfrom(self.MAX_BYTES)
             except socket.timeout as e:
                 err = e.args[0]
                 if err == 'timed out':
@@ -128,7 +132,7 @@ class Protocol():
         sock.settimeout(self.timeout_time)
         while True:
             try:
-                data, address = sock.recvfrom(4096)
+                data, address = sock.recvfrom(self.MAX_BYTES)
             except socket.timeout as e:
                 err = e.args[0]
                 if err == 'timed out':
@@ -171,7 +175,7 @@ class Protocol():
         while True:
             try:
                 if(sock):
-                    data, address = sock.recvfrom(4098)
+                    data, address = sock.recvfrom(self.MAX_BYTES)
                 else :
                     break
             except socket.timeout as e:
@@ -262,7 +266,7 @@ class Protocol():
         return None
 
     def Timeout(self):
-        time.sleep(5)
+        time.sleep(self .data_packet_timeout)
         return None
 
     def ThreadSend(self, AckArray, TripleDUP, message, sock, address, count , name):
@@ -409,12 +413,12 @@ class Protocol():
         self.recv_window_end = self.window_size - 1
         info = False
         curr_seq_write = [0] #current seq that needs to be written
-        sock.settimeout(30)
+        sock.settimeout(self.reinitiate_handshake_timeout)
         last_sent = 0
         while True:
             try:
-                data, address = sock.recvfrom(4096)
-                sock.settimeout(30)
+                data, address = sock.recvfrom(self.MAX_BYTES)
+                sock.settimeout(self.closing_connection_timeout)
             except socket.timeout as e:
                 err = e.args[0]
                 if err == 'timed out':
@@ -424,7 +428,6 @@ class Protocol():
             info = True
             text = data.decode()
             text = text.split('<!>')
-            # print(text)
             
             #Fin bit received
             if(int(text[2])==1):
