@@ -7,7 +7,7 @@ def client(address):
     sock.bind(('localhost', 5000))
     recv = False
     while not recv:
-        proto.connect(sock, address, 8, "trial2.txt")
+        proto.connect(sock, address, 8, "logo.gif")
         recv = proto.recvDataPackets(address, sock)
     return
 
