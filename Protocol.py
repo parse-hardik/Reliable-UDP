@@ -15,10 +15,11 @@ class Protocol():
     msg_size = 240
     window_size = 8
     timeout_time = 20
-    data_packet_timeout = 5
+    data_packet_timeout = 1
     MAX_BYTES = 65555
     closing_connection_timeout = 20
     reinitiate_handshake_timeout = 5
+    max_retransmission = 100
 
     def __init__(self):
         print("Reliable UDP Protocol Initiated")
@@ -27,6 +28,7 @@ class Protocol():
         self.DataArraylock = threading.Lock()
         self.senderThreadCountLock = threading.Lock()
         self.packetLeft = threading.Lock()
+        self.retransmission_stop = False
 
     def create_socket(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -183,6 +185,8 @@ class Protocol():
                 if err == 'timed out':
                     if (num_packets[0] <= 0) :
                         break
+                    if(self.retransmission_stop):
+                        break
                     continue
 
             if (num_packets[0] <= 0) :
@@ -269,7 +273,7 @@ class Protocol():
         time.sleep(self .data_packet_timeout)
         return None
 
-    def ThreadSend(self, AckArray, TripleDUP, message, sock, address, count , name):
+    def ThreadSend(self, AckArray, TripleDUP, message, sock, address, count , name, retransmission):
         self.senderThreadCountLock.acquire()
         count[0]+=1
         self.senderThreadCountLock.release()
@@ -278,10 +282,16 @@ class Protocol():
         sock.sendto(message, address)
         timer = Thread(target=self.Timeout)
         timer.start()
-        rt=1
+        retransmission[name]=1
         while True :
+            if(self.retransmission_stop):
+                return None
             if(timer.is_alive()):
                 
+                if(retransmission[name] >= self.max_retransmission):
+                    self.retransmission_stop = True
+                    return None
+
                 status = AckArray[name]
 
                 if(status==1) :
@@ -295,14 +305,14 @@ class Protocol():
                 elif (status == 2) : 
                     sock.sendto(message, address)
                     # print(f"{datetime.datetime.now().time()} : Triple dup sending {name} in current window from {self.sender_window_start} to {self.sender_window_end} in {name} ({rt})")
-                    rt+=1
+                    retransmission[name]+=1
                     timer = Thread(target=self.Timeout)
                     timer.start()
             else:
                 sock.sendto(message, address)
 
                 timer = Thread(target=self.Timeout)
-                rt+=1
+                retransmission[name]+=1
                 timer.start()
                 # print(f"{datetime.datetime.now().time()} : timeout sending  {name} in current window from {self.sender_window_start} to {self.sender_window_end} in {name}  ({rt})")
 
@@ -325,6 +335,7 @@ class Protocol():
         seq_window = 2*self.window_size
         AckArray = [0]*seq_window
         TripleDUP = [0]*seq_window
+        retransmission = [0]*seq_window
         data_sent = 0
         length = len(msg)
         num_packets = [math.ceil(length/self.msg_size)]
@@ -336,8 +347,6 @@ class Protocol():
         seq_start = 0
 
         count=[0]
-        # Thread(target=self.recvACK, args=(AckArray, TripleDUP, sock, num_packets, count)).start()
-        
         ackThreads=[]
 
         #first window 
@@ -345,13 +354,14 @@ class Protocol():
             # print(f"{datetime.datetime.now().time()} : sending {seq} ")
             data = msg[data_sent*self.msg_size:(data_sent+1)*self.msg_size]
             data = self.makeDataPacket(data.decode(), 0, 0, 0, seq)
-            Thread(target=self.ThreadSend, args=(AckArray, TripleDUP, data, sock, address, count, seq), name=seq).start() 
+            Thread(target=self.ThreadSend, args=(AckArray, TripleDUP, data, sock, address, count, seq, retransmission), name=seq).start() 
             t = Thread(target=self.recvACK, args=(AckArray, TripleDUP, sock, num_packets, count, seq))
             t.start()
             ackThreads.append(t)
             data_sent+=1
             seq = (seq+1)%seq_window
             time.sleep(0.01)
+
         #later transmissions
         while data_sent < length/self.msg_size:
             self.windowlock.acquire()
@@ -366,10 +376,11 @@ class Protocol():
                 data = self.makeDataPacket(data.decode(), 0, 0, 0, seq)
 
                 self.Acklock.acquire()
-                AckArray[seq]=0
+                AckArray[seq] = 0
+                retransmission[seq] = 0
                 self.Acklock.release()
 
-                Thread(target=self.ThreadSend, args=(AckArray, TripleDUP, data, sock, address, count, seq), name=seq).start() 
+                Thread(target=self.ThreadSend, args=(AckArray, TripleDUP, data, sock, address, count, seq, retransmission), name=seq).start() 
                 data_sent+=1
                 seq = (seq+1)%seq_window
                 seq_start = (seq_start+1)%seq_window
