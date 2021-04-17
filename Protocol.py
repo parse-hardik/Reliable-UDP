@@ -16,7 +16,7 @@ class Protocol():
     msg_size = 1024
     window_size = 8
     timeout_time = 1
-    data_packet_timeout = 2
+    data_packet_timeout = 1
     MAX_BYTES = 5000000
     closing_connection_timeout = 20
     reinitiate_handshake_timeout = 20
@@ -513,7 +513,6 @@ class Protocol():
                         break
                     
                     Thread(target=self.writeData, args=(next_expec, curr_seq_write, DataArray)).start()
-                    k+=1
                     next_expec = (next_expec+1)%seq_window
                     self.recv_window_end =  (self.recv_window_end+1)%seq_window
             
