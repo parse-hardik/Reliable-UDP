@@ -2,13 +2,14 @@ import socket
 import hashlib
 import time 
 import threading
+from multiprocessing import Process
 
-BUFFER = 500
+BUFFER = 500000
 delim = "<!>"
-max_retrans = 13
+max_retrans = 25
 timeout_handshake = 10
 timeout_acks = 1
-msglen = 240
+msglen = 1024
 
 class RelProtocol():
 
@@ -51,37 +52,33 @@ class RelProtocol():
         dummy_addr = ('localhost', 6565)
         # receive SYN
         ret_dict = self.recvPacket(sock,TIMEOUT=None)
-        # if ret_dict['valid_pkt'] == False: # if not valid
-        #     print("case 1")
-        #     return 0, dummy_addr
-        # if ret_dict['syn'] == 0 or ret_dict['pkt_type']=="ACK": #syn
-        #     print("case 2")
-        #     return 0, dummy_addr
-        if ret_dict['message'] == "SYN":
-            print("recieved SYN")
+        if ret_dict['valid_pkt'] == False: # if not valid
+            print("recieving SYN timedout")
+            return 0, dummy_addr
+        if ret_dict['syn'] == 0: #syn
+            print("case 2")
+            return 0, dummy_addr
+        print("recieved SYN")
         client_addr = ret_dict['addr']
         self.win_size_other = ret_dict['syn']
         # time.sleep(15)
         # send SYN+ACK
-        self.sendDataPacket(self.win_size_self,1,0,0,"SYN+ACK",sock,client_addr)
+        self.sendDataPacket(1,1,0,-1,"SYN+ACK",sock,client_addr)
         print("sent SYN+ACK")
 
         # receive ACK
         # sock.settimeout(TIMEOUT)
         ret_dict = self.recvPacket(sock,TIMEOUT=1) #this needs timer
             # sock.settimeout(None)
-        # if ret_dict['valid_pkt']==False:
-        #     return 0, dummy_addr
-        # if ret_dict['pkt_type'] == "ACK":
-        #     print("case 3")
-        #     return 0, dummy_addr
-        # if ret_dict['ack'] != -1: #ack value
-        #     print("case 4")
-        #     return 0, dummy_addr
+        if ret_dict['valid_pkt']==False:
+            return 0, dummy_addr
+        if ret_dict['ack'] != 1 or ret_dict['seq_num'] != -1: #ack value
+            print("case 4")
+            return 0, dummy_addr
         print("recieved ACK")
         filename = ret_dict['message']
         return filename, client_addr
-		
+        
 
     def threeWayConnect_receiver(self,sock,server_addr,win_size_recv,filename):
         self.win_size_self = win_size_recv
@@ -93,15 +90,15 @@ class RelProtocol():
         ret_dict = self.recvPacket(sock,TIMEOUT=1)
         if ret_dict['valid_pkt']==False:
             return 0
-        if ret_dict['syn'] ==0 or ret_dict['ack']==0 or ret_dict['pkt_type']=="ACK":
+        if ret_dict['syn'] !=1 or ret_dict['ack']!=1 or ret_dict['seq_num'] != -1:
             return 0
-        self.win_size_other = ret_dict['syn']
+        self.win_size_other = 8
         if ret_dict['message'] == "SYN+ACK":
             print("recieved SYN+ACK")
         # time.sleep(15)
         # send ACK
 
-        self.sendDataPacket(0,-1,0,0,filename,sock,server_addr)
+        self.sendDataPacket(0,1,0,-1,filename,sock,server_addr)
         # self.sendAckPacket(1,0,sock,server_addr)
         print("sent ACK")
         return 1 # 1 if success # 0 if fail
@@ -181,7 +178,8 @@ class RelProtocol():
             ret_dict = self.recvPacket(sock, 5)
 
             if ret_dict['fin'] == 1:
-                print("Fin received")
+                #print("Fin received")
+                return mssgs, False
                 while True:
                     self.sendDataPacket(0,1,1,0,"",sock,addr)
                     print("sent fin+ ack")
@@ -189,7 +187,7 @@ class RelProtocol():
                     if ret_dict['valid_pkt']==False:
                         print("time out at final ack")
                         break
-                    if ret_dict['valid_pkt']==True and ret_dict['ack']==-1:
+                    if ret_dict['valid_pkt']==True and ret_dict['ack']==1 and ret_dict['seq_num']==-1:
                         print("received ack")
                         break
                 return mssgs, False
@@ -204,13 +202,19 @@ class RelProtocol():
                 offset_exp_seq = exp_seq_num%div
                 mod_val = (recvd_seq-offset_exp_seq)%div
                 pkt_ack = exp_seq_num+mod_val
+                #pkt_ack = exp_seq_num + recvd_seq - (exp_seq_num)%div
 
                 #not duplicate and can be out of order
                 if 0 <= mod_val <= (int(div/2)-1):
-                    mssgs[exp_seq_num+mod_val] = ret_dict['message']
-                    print(f'Recieved packet no = {exp_seq_num+mod_val}')
-                #else duplicate
+                    mssgs[pkt_ack] = ret_dict['message']
+                    print(f'Recieved packet no = {pkt_ack}')
 
+
+                
+
+                # if exp_seq_num <= pkt_ack <= (exp_seq_num+self.win_size_self-1):
+                #     mssgs[pkt_ack] = ret_dict['message']
+                #     print(f'Recieved packet no = {pkt_ack}')
 
                 # if len(mssgs[ret_dict['seq_num']]) == 0: #handled duplicates
                 #     mssgs[ret_dict['seq_num']] = ret_dict['message']
@@ -218,36 +222,19 @@ class RelProtocol():
                 while len(mssgs[exp_seq_num]) != 0:
                     exp_seq_num += 1 #cumulative and window shift
 
-                if pkt_ack < exp_seq_num+self.win_size_self:
-                	self.sendAckPacket(recvd_seq, exp_seq_num%div, sock, addr)
-                	print(f'Sent Ack no = {pkt_ack} || Expected Packet no = {exp_seq_num}')
+                if not (0 <= mod_val <= (int(div/2)-1)):
+                    self.sendAckPacket(recvd_seq, exp_seq_num%div, sock, addr)
+                    print(f'Sent Ack no = {pkt_ack} || Expected Packet no = {exp_seq_num}')
+
+                if pkt_ack < exp_seq_num+div:
+                    self.sendAckPacket(recvd_seq, exp_seq_num%div, sock, addr)
+                    print(f'Sent Ack no = {pkt_ack} || Expected Packet no = {exp_seq_num}')
+
+
 
 
         return mssgs, False
-        # window = []
-        # i=0
-        # ret_string = ""
-        # while True:
-        #     ret_dict = self.recvPacket(sock,1)
-        #     if ret_dict['valid_pkt'] == False:
-        #         break
-        #     print(f"{i} : {ret_dict['seq_num']} : {ret_dict['message']}")
-            
-        #     ret_string += ret_dict['message']
-        #     self.sendAckPacket(i%16,(i+1)%16,sock,addr)
-        #     i+=1
-        # 2 threads - sending acks & receiving pkts
-        # recvpkt thread - loop of recv pkt - get pkt num, type from recvpkt()
-
-        # check for dup, out of order, corrupted etc,
-
-        # after knowing the pkt number - connect with the ACK sender thread
-
-        # if file is enirely retrieved - finish func - something like EOF
-
-        # receive packets and order them and return
-        # return file
-        # return ret_string
+  
 
     def SRQsend(self,data,sock,addr): # this is for server
         
@@ -263,8 +250,8 @@ class RelProtocol():
         max_exp_seq_num = 0
         div = 2*self.win_size_self
 
-        for i in range(total_pkts):
-            mssgs.append(data[i*msglen:min(msglen+i*msglen,data_len)])
+        # for i in range(total_pkts):
+        #     mssgs.append(data[i*msglen:min(msglen+i*msglen,data_len)])
 
         trans_count = [0]*total_pkts
         ack_status = [False]*total_pkts
@@ -280,14 +267,14 @@ class RelProtocol():
             curr_seq_num = base_win
 
             while curr_seq_num < min(base_win+self.win_size_self, total_pkts):
-                if trans_count[curr_seq_num] > 14:
+                if trans_count[curr_seq_num] > 13:
                     print("Max Transmission Reached")
                     max_trans_reached = True
                     return
 
                 if ack_status[curr_seq_num] == False: #retransmission
                     offset_seq_num = curr_seq_num%div
-                    self.sendDataPacket(0,0,0,offset_seq_num,mssgs[curr_seq_num].decode(),sock,addr)
+                    self.sendDataPacket(0,0,0,offset_seq_num,data[curr_seq_num*msglen:min(msglen+curr_seq_num*msglen,data_len)].decode(),sock,addr)
                     trans_count[curr_seq_num] += 1
                     print(f'packet no = {curr_seq_num} || trans count = {trans_count[curr_seq_num]}')
                 
@@ -321,28 +308,35 @@ class RelProtocol():
                 
                 if ret_dict['valid_pkt'] == True and ret_dict['pkt_type'] == 'ACK':
                     real_ack = self.offsetSeq(base, ret_dict['ack'])
+                    #real_ack = ret_dict['ack'] + base - (base)%div
                     if base <= real_ack < base+self.win_size_self:
-                    	ack_status[real_ack] = True #ack done
-                    	no_of_acks += 1
+                        ack_status[real_ack] = True #ack done
+                        no_of_acks += 1
                     real_exp_seq_num = self.offsetSeq(base, ret_dict['exp_seq_num'])
-                    if base <= real_exp_seq_num < base+self.win_size_self:
-                    	max_exp_seq_num = max(max_exp_seq_num, real_exp_seq_num) #cumulative/window shift
+                    #real_exp_seq_num = ret_dict['exp_seq_num'] + base - (base)%div
 
-                    	# if max_exp_seq_num == total_pkts:
-                    	# 	return
-                    	
-                    	if real_exp_seq_num == last_exp:
-                        	count_last_exp += 1
-
-
-                        	if count_last_exp == 3:
-                        		print("triple dup ack!")
-                        		self.sendDataPacket(0,0,0,last_exp%div,mssgs[last_exp],sock,addr)
+                    if base <= real_exp_seq_num <= base+self.win_size_self:
+                        max_exp_seq_num = max(max_exp_seq_num, real_exp_seq_num) #cumulative/window shift
+                        # for ind in range(max(0, max_exp_seq_num-div), max_exp_seq_num):
+                        #     ack_status[ind] = True
+                        # if max_exp_seq_num == total_pkts:
+                        #   return
+                        
+                        if real_exp_seq_num == last_exp:
+                            count_last_exp += 1
 
 
-                    	else:
-                        	last_exp = real_exp_seq_num
-                        	count_last_exp = 1
+                            if count_last_exp == 3:
+                                print("triple dup ack!")
+                                self.sendDataPacket(0,0,0,last_exp%div,data[last_exp*msglen:min(msglen+last_exp*msglen,data_len)].decode(),sock,addr)
+
+
+                        else:
+                            last_exp = real_exp_seq_num
+                            count_last_exp = 1
+
+                # if real_exp_seq_num == total_pkts:
+                #     timeout_reached = True
 
                 print(f'Ack for packet no = {real_ack} || Expected packet no = {real_exp_seq_num}')
                 # if real_exp_seq_num == total_pkts:
@@ -352,11 +346,7 @@ class RelProtocol():
                 if no_of_acks == req_no_of_acks: #only for required num of times
                     return
                     
-                    
 
-                
-
-               
 
         
 
@@ -364,7 +354,10 @@ class RelProtocol():
 
             sending_thread = threading.Thread(target=sendingPackets)
             receiving_thread = threading.Thread(target=receivingAcks)
+            # sending_thread = Process(target=sendingPackets)
+            # receiving_thread = Process(target=receivingAcks)
 
+            print('New Window')
             sending_thread.start()
             receiving_thread.start()
 
@@ -378,42 +371,21 @@ class RelProtocol():
 
             base_win = max_exp_seq_num #shifting window
         # parting handshake
-        self.sendDataPacket(0,0,1,0,"",sock,addr)
+        self.sendDataPacket(0,0,1,0,"Close",sock,addr)
+        self.sendDataPacket(0,0,1,0,"Close",sock,addr)
         print("sent FIN")
-        while True:
-            ret_dict = self.recvPacket(sock,None)
-            if ret_dict['valid_pkt']== True and ret_dict['fin']==1:
-                print("received FIN +ACK")
-                self.sendDataPacket(0,-1,0,0,"",sock,addr)
-                print("sent final ACK")
-                break
-        # i=0
-        # data_len = len(data)
-        # while True:
-        #     msg = data[i:min(msglen+i,data_len)]
-        #     # print(f'{i} : {msg}')
-        #     self.sendDataPacket(0,0,0,int((i/msglen)%16),msg,sock,addr)
 
-        #     if msglen+i> data_len:
-        #         break
-        #     i += msglen
-        #     ret_dict = self.recvPacket(sock,1)
+
+        # while True:
+        #     ret_dict = self.recvPacket(sock,3)
         #     if ret_dict['valid_pkt']==False:
         #         break
-        #     print(f"ack received ack : {ret_dict['ack']} , exp_seq_num : {ret_dict['exp_seq_num']}")
-        # sends data pkts and recvs ACK pkts
-        # 2 threads for each
-        # keep the maximum of the ACks 
-        # (cumulative ) 
-        # make pakcets per window
-        # _ _ _ _ _ _ _ _ # if possible store packt so thT retransmission is easy
-        # keep on sending pkts
-        # if ack is received - get ack number 
-        # slide window accordingly
-        # timeout start after pkt is sent
-        # discard the timeout for ACK and cumulative ACk
-        # triple dupack 
-        # when entire file is sent  - return 
+        #     if ret_dict['valid_pkt']== True and ret_dict['fin']==1 and ret_dict['ack']==1:
+        #         print("received FIN +ACK")
+        #         self.sendDataPacket(0,1,0,-1,"",sock,addr)
+        #         print("sent final ACK")
+        #         break
+      
         return
         
 '''  
