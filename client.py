@@ -17,7 +17,7 @@ if __name__ == '__main__':
     parser.add_argument('-w' , default=8 , help="chose window size")
     parser.add_argument('-p', metavar='PORT', type=int, default=6000, help='Reliable UDP port')
     args = parser.parse_args()
-    client(('localhost', args.p), args.w)
+    client(('localhost', args.p), int(args.w))
 
 #To Run client use
 #python server.py 
