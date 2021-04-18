@@ -4,12 +4,13 @@ import sys
 import base64
 import threading
 import os
+import time
 
 server_addr = ('localhost', 6000)
 #client_addr = ('localhost', 5000)
-piece_size = 1024*1024
+piece_size = 1024*1024*50
 bytes_recv = 0
-wind_size = 100
+wind_size = 8
 
 def end_func():
     print(bytes_recv)
@@ -33,10 +34,14 @@ def recvFile(newFile,sock):
     done_handshake = False
     timer_started = False
     f = open(newFile,"wb")
+
+    t1 = 0
+    t2 = 0
     
     # t=threading.Timer(60, end_func)
     # t.start()
     t = threading.Timer(60, end_func)
+    t1 = time.time()
     while True:
         ret_file, timed_out = protocol.SRQrecv(sock,server_addr)
 
@@ -56,7 +61,7 @@ def recvFile(newFile,sock):
 
         if timer_started == False:
             #t.start()
-
+            
             timer_started = True
 
         ind = 0
@@ -71,23 +76,25 @@ def recvFile(newFile,sock):
         bytes_recv += curr_size
         if curr_size < piece_size:
             print("Done Transfer")
-            print(curr_size)
+            print(bytes_recv)
             break
 
     #t.join()
+    t2 = time.time()
+    print(f'Time Taken = {t2-t1}')
     f.close()
 
 
 protocol = RelProtocol()
 client_sock = protocol.makeSocket()
 #client_sock.bind(client_addr)
-filename = 'myfile_20.png'
+filename = input('Enter filename: ')
 #print("called threeway")
 while protocol.threeWayConnect_receiver(client_sock,server_addr,wind_size,filename) == 0:
     print("Reconnecting")
 
 
-print("sent to server")
+print("Sent to server")
 
 newFile = f"client_{filename}"
 recvFile(newFile,client_sock)
