@@ -16,7 +16,7 @@ class Protocol():
     msg_size = 1024
     window_size = 8
     timeout_time = 1
-    data_packet_timeout = 1
+    data_packet_timeout = 0.25
     MAX_BYTES = 5000000
     closing_connection_timeout = 20
     reinitiate_handshake_timeout = 20
@@ -199,18 +199,20 @@ class Protocol():
 
             if (num_packets[0] <= 0) :
                 break
+            if(self.retransmission_stop):
+                break
             data = data.decode()
             line = data.split('<!>')
 
             packet_num = int(line[0])
             next_expec = int(line[1])
             
-            print(f"{datetime.datetime.now().time()} : Packet {packet_num} in current window from {self.sender_window_start} to {self.sender_window_end} in {name}")
+            # print(f"{datetime.datetime.now().time()} : Packet {packet_num} in current window from {self.sender_window_start} to {self.sender_window_end} in {name}")
 
 
             #check if within the window
             if(not ((self.sender_window_start < self.sender_window_end and packet_num >= self.sender_window_start and packet_num <= self.sender_window_end) or (self.sender_window_start > self.sender_window_end and (packet_num >= self.sender_window_start or packet_num <= self.sender_window_end)) )):
-                # print(f"Packet {packet_num} does not belong to current window from {self.sender_window_start} to {self.sender_window_end}")
+            #     # print(f"Packet {packet_num} does not belong to current window from {self.sender_window_start} to {self.sender_window_end}")
                 continue
 
             # Mark Ack received from window start to next_expec
@@ -273,6 +275,8 @@ class Protocol():
             
             if (num_packets[0] <= 0):
                 break
+            if(self.retransmission_stop):
+                break
             '''
             To implement end of recieving ACKs and stop the server using break
             '''
@@ -289,7 +293,6 @@ class Protocol():
         message = message.encode()
         message = bytes(message)
         sock.sendto(message, address)
-        time.sleep(self .data_packet_timeout)
         timer = Thread(target=self.Timeout)
         timer.start()
         retransmission[name]=1
@@ -298,8 +301,6 @@ class Protocol():
             if(self.retransmission_stop):
                 return None
             if(timer.is_alive()):
-            # if(True):
-                
                 if(retransmission[name] >= self.max_retransmission):
                     self.retransmission_stop = True
                     return None
@@ -318,7 +319,6 @@ class Protocol():
                     sock.sendto(message, address)
                     # print(f"{datetime.datetime.now().time()} : Triple dup sending {name} in current window from {self.sender_window_start} to {self.sender_window_end} in {name}")
                     retransmission[name]+=1
-                    # time.sleep(self .data_packet_timeout)
                     timer = Thread(target=self.Timeout)
                     timer.start()
             else:
@@ -326,7 +326,6 @@ class Protocol():
 
                 timer = Thread(target=self.Timeout)
                 retransmission[name]+=1
-                # time.sleep(self .data_packet_timeout)
                 timer.start()
                 # print(f"{datetime.datetime.now().time()} : timeout sending  {name} in current window from {self.sender_window_start} to {self.sender_window_end} in {name}")
 
@@ -366,18 +365,22 @@ class Protocol():
         print("\n\nSending File....\n")
         print("Number of packets",num_packets[0])
 
+        for i in range(0,1):
+            t = Thread(target=self.recvACK, args=(AckArray, TripleDUP, sock, num_packets, count, seq))
+            t.start()
+            ackThreads.append(t)
+
+
         start_time = time.time()
         while(data_sent < length/self.msg_size and count[0]<self.window_size):
             # print(f"{datetime.datetime.now().time()} : sending {seq} ")
             data = msg[data_sent*self.msg_size:(data_sent+1)*self.msg_size]
             data = self.makeDataPacket(data.decode(), 0, 0, 0, seq)
             Thread(target=self.ThreadSend, args=(AckArray, TripleDUP, data, sock, address, count, seq, retransmission), name=seq).start() 
-            t = Thread(target=self.recvACK, args=(AckArray, TripleDUP, sock, num_packets, count, seq))
-            t.start()
-            ackThreads.append(t)
+            
             data_sent+=1
             seq = (seq+1)%seq_window
-            time.sleep(0.0001)
+            time.sleep(0.01)
 
         #later transmissions
         while data_sent < length/self.msg_size:
@@ -501,6 +504,7 @@ class Protocol():
             #if not logic
             self.DataArraylock.acquire()
             if(DataArray[message_num] == ""):
+                last_sent = message_num
                 DataArray[message_num] = original_message
                 self.DataArraylock.release()
 
@@ -518,7 +522,7 @@ class Protocol():
             
             else :
                 self.DataArraylock.release()
-            last_sent = message_num
+            # last_sent = message_num
             message = self.makeACKPacket(message_num,next_expec)
             message = message.encode()
             message = bytes(message)
