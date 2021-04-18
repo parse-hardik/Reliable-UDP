@@ -38,7 +38,7 @@ class Protocol():
         return sock
         
     def connect(self, sock, address, window, file_name_path):
-        # self.window_size = window
+        self.window_size = window
         if os.path.exists("output_"+file_name_path):
             os.remove("output_"+file_name_path)
         self.req_file = file_name_path
