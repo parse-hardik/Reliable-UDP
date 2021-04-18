@@ -13,12 +13,12 @@ def client(address):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Send and recieve Reliable UDP locally')
-    parser.add_argument('host')
+    # parser.add_argument('-h' , default="localhost" , help="chose host")
     parser.add_argument('-p', metavar='PORT', type=int, default=6000, help='Reliable UDP port')
     args = parser.parse_args()
-    client((args.host, args.p))
+    client(('localhost', args.p))
 
 #To Run client use
-#python server.py localhost
+#python server.py 
 #netem settings commands
 #sudo tc qdisc add dev lo root netem loss 90%

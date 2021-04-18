@@ -8,7 +8,6 @@ import math
 import os
 import datetime
 import base64
-from tqdm import tqdm
 
 
 class Protocol():
@@ -240,7 +239,7 @@ class Protocol():
                 self.packetLeft.release()
             self.Acklock.release()
 
-            print(packet_num, num_packets[0], f" current window from {self.sender_window_start} to {self.sender_window_end}")
+            # print(packet_num, num_packets[0], f" current window from {self.sender_window_start} to {self.sender_window_end}")
             # print(f"updated ACK array {AckArray}")
 
             self.windowlock.acquire()
@@ -293,6 +292,7 @@ class Protocol():
         message = message.encode()
         message = bytes(message)
         sock.sendto(message, address)
+        # st_time = time.time()
         timer = Thread(target=self.Timeout)
         timer.start()
         retransmission[name]=1
@@ -321,11 +321,13 @@ class Protocol():
                     retransmission[name]+=1
                     timer = Thread(target=self.Timeout)
                     timer.start()
+                    # st_time = time.time()
             else:
                 sock.sendto(message, address)
 
                 timer = Thread(target=self.Timeout)
                 retransmission[name]+=1
+                # st_time = time.time()
                 timer.start()
                 # print(f"{datetime.datetime.now().time()} : timeout sending  {name} in current window from {self.sender_window_start} to {self.sender_window_end} in {name}")
 
@@ -404,7 +406,7 @@ class Protocol():
                 data_sent+=1
                 seq = (seq+1)%seq_window
                 seq_start = (seq_start+1)%seq_window
-                time.sleep(0.00001)
+                time.sleep(0.01)
         
         for t in ackThreads:
             t.join()
@@ -476,7 +478,7 @@ class Protocol():
             message_num = int(text[3])
             if message_num==-1:
                 continue
-            print(f"{datetime.datetime.now().time()} : got a packet {message_num} in window {next_expec} {self.recv_window_end} ")
+            # print(f"{datetime.datetime.now().time()} : got a packet {message_num} in window {next_expec} {self.recv_window_end} ")
             #if message not in given window
             if(not ((next_expec < self.recv_window_end and message_num >= next_expec and message_num<=self.recv_window_end) or (next_expec > self.recv_window_end and (message_num >= next_expec or message_num<=self.recv_window_end )))):
                 # print(f"{datetime.datetime.now().time()} : got a packet {message_num} not within window {next_expec} {self.recv_window_end} ")
