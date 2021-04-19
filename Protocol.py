@@ -12,13 +12,13 @@ import base64
 
 class Protocol():
     delim = "<!>"
-    msg_size = 1024*50
+    msg_size = 1024
     window_size = 8
     timeout_time = 1
-    data_packet_timeout = 0.25
+    data_packet_timeout = 0.5
     MAX_BYTES = 5000000
-    closing_connection_timeout = 20
-    reinitiate_handshake_timeout = 20
+    closing_connection_timeout = 5
+    reinitiate_handshake_timeout = 5
     max_retransmission = 100
     req_file=""
     data_size = 0
