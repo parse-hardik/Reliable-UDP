@@ -1,13 +1,14 @@
 from Protocol import Protocol
 import argparse
 
-def client(address):
+def client(address, window):
+    fileName = input("Enter file to be requested: ")
     proto = Protocol()
     sock = proto.create_socket()
     sock.bind(('localhost', 5000))
     recv = False
     while not recv:
-        proto.connect(sock, address, 8, "1MB.txt")
+        proto.connect(sock, address, window, fileName)
         recv = proto.recvDataPackets(address, sock)
     return
 
@@ -15,8 +16,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Send and recieve Reliable UDP locally')
     # parser.add_argument('-h' , default="localhost" , help="chose host")
     parser.add_argument('-p', metavar='PORT', type=int, default=6000, help='Reliable UDP port')
+    parser.add_argument('-w', metavar='PORT', type=int, default=8, help='Window Size')
     args = parser.parse_args()
-    client(('localhost', args.p))
+    client(('localhost', args.p), int(args.w))
 
 #To Run client use
 #python server.py 

@@ -12,7 +12,7 @@ import base64
 
 class Protocol():
     delim = "<!>"
-    msg_size = 1024
+    msg_size = 1024*50
     window_size = 8
     timeout_time = 1
     data_packet_timeout = 0.25
