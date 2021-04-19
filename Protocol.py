@@ -202,6 +202,7 @@ class Protocol():
                 break
             data = data.decode()
             line = data.split('<!>')
+            # print(line)
 
             packet_num = int(line[0])
             next_expec = int(line[1])
@@ -239,7 +240,7 @@ class Protocol():
                 self.packetLeft.release()
             self.Acklock.release()
 
-            # print(packet_num, num_packets[0], f" current window from {self.sender_window_start} to {self.sender_window_end}")
+            print(packet_num, num_packets[0], f" current window from {self.sender_window_start} to {self.sender_window_end}")
             # print(f"updated ACK array {AckArray}")
 
             self.windowlock.acquire()
@@ -367,7 +368,7 @@ class Protocol():
         print("\n\nSending File....\n")
         print("Number of packets",num_packets[0])
 
-        for i in range(0,1):
+        for i in range(0,5):
             t = Thread(target=self.recvACK, args=(AckArray, TripleDUP, sock, num_packets, count, seq))
             t.start()
             ackThreads.append(t)
@@ -382,7 +383,7 @@ class Protocol():
             
             data_sent+=1
             seq = (seq+1)%seq_window
-            time.sleep(0.01)
+            # time.sleep(0.001)
 
         #later transmissions
         while data_sent < length/self.msg_size:
@@ -478,7 +479,7 @@ class Protocol():
             message_num = int(text[3])
             if message_num==-1:
                 continue
-            # print(f"{datetime.datetime.now().time()} : got a packet {message_num} in window {next_expec} {self.recv_window_end} ")
+            print(f"{datetime.datetime.now().time()} : got a packet {message_num} in window {next_expec} {self.recv_window_end} ")
             #if message not in given window
             if(not ((next_expec < self.recv_window_end and message_num >= next_expec and message_num<=self.recv_window_end) or (next_expec > self.recv_window_end and (message_num >= next_expec or message_num<=self.recv_window_end )))):
                 # print(f"{datetime.datetime.now().time()} : got a packet {message_num} not within window {next_expec} {self.recv_window_end} ")

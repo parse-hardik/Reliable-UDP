@@ -2,13 +2,12 @@ import socket
 import hashlib
 import time 
 import threading
-from multiprocessing import Process
 
 BUFFER = 500000
 delim = "<!>"
-max_retrans = 25
+max_retrans = 300
 timeout_handshake = 10
-timeout_acks = 1
+timeout_acks = 0.5
 msglen = 1024
 
 class RelProtocol():
@@ -92,7 +91,7 @@ class RelProtocol():
             return 0
         if ret_dict['syn'] !=1 or ret_dict['ack']!=1 or ret_dict['seq_num'] != -1:
             return 0
-        self.win_size_other = 8
+        self.win_size_other = win_size_recv
         if ret_dict['message'] == "SYN+ACK":
             print("recieved SYN+ACK")
         # time.sleep(15)
@@ -167,7 +166,7 @@ class RelProtocol():
 
     def SRQrecv(self,sock,addr): #this is for client
 
-        mssgs = [""]*10000
+        mssgs = [""]*100000
         exp_seq_num = 0 #left end of window
         div = 2*self.win_size_self
 
@@ -178,8 +177,8 @@ class RelProtocol():
             ret_dict = self.recvPacket(sock, 5)
 
             if ret_dict['fin'] == 1:
-                #print("Fin received")
-                return mssgs, False
+                print("Fin received")
+                # return mssgs, False
                 while True:
                     self.sendDataPacket(0,1,1,0,"",sock,addr)
                     print("sent fin+ ack")
@@ -222,9 +221,9 @@ class RelProtocol():
                 while len(mssgs[exp_seq_num]) != 0:
                     exp_seq_num += 1 #cumulative and window shift
 
-                if not (0 <= mod_val <= (int(div/2)-1)):
-                    self.sendAckPacket(recvd_seq, exp_seq_num%div, sock, addr)
-                    print(f'Sent Ack no = {pkt_ack} || Expected Packet no = {exp_seq_num}')
+                # if not (0 <= mod_val <= (int(div/2)-1)):
+                #     self.sendAckPacket(recvd_seq, exp_seq_num%div, sock, addr)
+                #     print(f'Sent Ack no = {pkt_ack} || Expected Packet no = {exp_seq_num}')
 
                 if pkt_ack < exp_seq_num+div:
                     self.sendAckPacket(recvd_seq, exp_seq_num%div, sock, addr)
@@ -267,7 +266,7 @@ class RelProtocol():
             curr_seq_num = base_win
 
             while curr_seq_num < min(base_win+self.win_size_self, total_pkts):
-                if trans_count[curr_seq_num] > 13:
+                if trans_count[curr_seq_num] > max_retrans:
                     print("Max Transmission Reached")
                     max_trans_reached = True
                     return
@@ -300,7 +299,7 @@ class RelProtocol():
                 curr_seq_num += 1
 
             while True:
-                ret_dict = self.recvPacket(sock,1)
+                ret_dict = self.recvPacket(sock,timeout_acks)
 
                 if ret_dict['timed_out'] == True:
                     print('Timed Out')   
@@ -372,19 +371,19 @@ class RelProtocol():
             base_win = max_exp_seq_num #shifting window
         # parting handshake
         self.sendDataPacket(0,0,1,0,"Close",sock,addr)
-        self.sendDataPacket(0,0,1,0,"Close",sock,addr)
+        # self.sendDataPacket(0,0,1,0,"Close",sock,addr)
         print("sent FIN")
 
 
-        # while True:
-        #     ret_dict = self.recvPacket(sock,3)
-        #     if ret_dict['valid_pkt']==False:
-        #         break
-        #     if ret_dict['valid_pkt']== True and ret_dict['fin']==1 and ret_dict['ack']==1:
-        #         print("received FIN +ACK")
-        #         self.sendDataPacket(0,1,0,-1,"",sock,addr)
-        #         print("sent final ACK")
-        #         break
+        while True:
+            ret_dict = self.recvPacket(sock,3)
+            if ret_dict['valid_pkt']==False:
+                break
+            if ret_dict['valid_pkt']== True and ret_dict['fin']==1 and ret_dict['ack']==1:
+                print("received FIN +ACK")
+                self.sendDataPacket(0,1,0,-1,"",sock,addr)
+                print("sent final ACK")
+                break
       
         return
         

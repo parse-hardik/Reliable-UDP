@@ -6,8 +6,8 @@ import base64
 
 server_addr = ('localhost', 6000)
 # client_addr = ('localhost', 5000)
-piece_size = 1024*1024
-wind_size = 100
+piece_size = 1024*1024*50
+wind_size = 8
 
 protocol = RelProtocol()
 
