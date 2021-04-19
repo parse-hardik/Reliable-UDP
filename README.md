@@ -8,4 +8,6 @@
 	1. python3 server.py -p 6000
 	2. python3 client.py -p 6000 -w 10
 By default both server and client run on localhost, -p to the server implies the port on which server will be binded. -p to the client will indicate the port to which client should connect.
+-w on client implies the window size desired.
+Default values for port and window size are 6000 and 8 respectively.
 By default client is binded on to port 5000, however, this is not necessary.
