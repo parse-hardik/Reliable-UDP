@@ -15,7 +15,6 @@ def client(address, window):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Send and recieve Reliable UDP locally')
     # parser.add_argument('-h' , default="localhost" , help="chose host")
-    parser.add_argument('-w' , default=8 , help="chose window size")
     parser.add_argument('-p', metavar='PORT', type=int, default=6000, help='Reliable UDP port')
     parser.add_argument('-w', metavar='PORT', type=int, default=8, help='Window Size')
     args = parser.parse_args()

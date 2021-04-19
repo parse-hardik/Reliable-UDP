@@ -12,10 +12,10 @@ import base64
 
 class Protocol():
     delim = "<!>"
-    msg_size = 1024
+    msg_size = 1024*10
     window_size = 8
-    timeout_time = 1
-    data_packet_timeout = 0.5
+    timeout_time = 0.5
+    data_packet_timeout = 0.25
     MAX_BYTES = 5000000
     closing_connection_timeout = 5
     reinitiate_handshake_timeout = 5
@@ -407,7 +407,7 @@ class Protocol():
                 data_sent+=1
                 seq = (seq+1)%seq_window
                 seq_start = (seq_start+1)%seq_window
-                time.sleep(0.01)
+                #time.sleep(0.01)
         
         for t in ackThreads:
             t.join()
