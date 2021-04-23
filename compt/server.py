@@ -1,13 +1,23 @@
 import socket
-from protocoln import RelProtocol
+from protocol import RelProtocol
 import sys
 import time
 import base64
 
+'''
+***Group Members***
+
+Rupsa Dhar - 2018A7PS0376H
+Rishabh Jain - 2018A7PS0275H
+Pranavi Marripudi - 2018A7PS0507H
+Adesh Kumar Pradhan - 2017B3A70960H
+Mereddy Aishwwarya Reddi - 2018A7PS0276H
+'''
+
 server_addr = ('localhost', 6000)
 # client_addr = ('localhost', 5000)
 piece_size = 1024*1024*50
-wind_size = 8
+
 
 protocol = RelProtocol()
 
@@ -17,6 +27,15 @@ def sendFile(sock,filename,address):
     # #print(len(file_data))
     # # file_data = str(file_data)
     # protocol.SRQsend(file_data,sock,address)
+
+    try:
+        fx = open(filename, 'rb')
+    # Do something with the file
+    except IOError:
+        print("File not accessible")
+    
+    fx.close()
+    
 
     with open(filename, 'rb') as f:
         while True:
@@ -33,6 +52,7 @@ def sendFile(sock,filename,address):
 server_sock = protocol.makeSocket()
 server_sock.bind(server_addr)
 
+wind_size = int(input('Enter Window Size: '))
 
 while True:
     filename, client_addr = protocol.threeWayConnect_sender(server_sock,wind_size)
@@ -47,6 +67,7 @@ print(client_addr)
 # filename = filename.decode()
 # filename = ret_dict['message']
 #filename = 'plan.txt'
+
 print(f"Received filename: {filename}")
 
 sendFile(server_sock,filename,client_addr)

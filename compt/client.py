@@ -1,16 +1,25 @@
 import socket
-from protocoln import RelProtocol
+from protocol import RelProtocol
 import sys
 import base64
 import threading
 import os
 import time
 
+'''
+***Group Members***
+
+Rupsa Dhar - 2018A7PS0376H
+Rishabh Jain - 2018A7PS0275H
+Pranavi Marripudi - 2018A7PS0507H
+Adesh Kumar Pradhan - 2017B3A70960H
+Mereddy Aishwwarya Reddi - 2018A7PS0276H
+'''
+
 server_addr = ('localhost', 6000)
 #client_addr = ('localhost', 5000)
 piece_size = 1024*1024*50
 bytes_recv = 0
-wind_size = 8
 
 def end_func():
     print(bytes_recv)
@@ -76,18 +85,21 @@ def recvFile(newFile,sock):
         bytes_recv += curr_size
         if curr_size < piece_size:
             print("Done Transfer")
-            print(bytes_recv)
+            
             break
 
     #t.join()
     t2 = time.time()
+    print(f'Total bytes recieved= {bytes_recv}')
     print(f'Time Taken = {t2-t1}')
+    print(f'Throughput = {bytes_recv/(t2-t1)} Bytes/sec')
     f.close()
 
 
 protocol = RelProtocol()
 client_sock = protocol.makeSocket()
 #client_sock.bind(client_addr)
+wind_size = int(input('Enter Window Size: '))
 filename = input('Enter filename: ')
 #print("called threeway")
 while protocol.threeWayConnect_receiver(client_sock,server_addr,wind_size,filename) == 0:

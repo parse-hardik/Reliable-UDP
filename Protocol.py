@@ -45,13 +45,14 @@ class Protocol():
         print("Three way handshake initiated")
         syn = self.makeDataPacket("Hello", self.window_size, 0, 0, 0)
         sock.sendto(bytes(syn.encode()), address)
-        sock.settimeout(self.timeout_time)
         while True:
+            sock.settimeout(self.timeout_time)
             try:
                 data, address = sock.recvfrom(self.MAX_BYTES)
             except socket.timeout as e:
                 err = e.args[0]
                 if err == 'timed out':
+                    sock.settimeout(None)
                     sock.sendto(bytes(syn.encode()), address)
                     continue
             data = data.decode()
@@ -85,6 +86,8 @@ class Protocol():
                 except socket.timeout as e:
                     err = e.args[0]
                     if err == 'timed out':
+                        sock.settimeout(None)
+                        break
                         sock.sendto(bytes(synack.encode()), address)
                         print("synack")
                         continue
